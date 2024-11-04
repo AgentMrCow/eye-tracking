@@ -34,7 +34,7 @@
   },
   "plugins": {
     "sql": {
-      "preload": ["sqlite:database/eye_tracking.db"]
+      "preload": []
     }
   }
 }

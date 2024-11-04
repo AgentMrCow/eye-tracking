@@ -7,23 +7,31 @@ import { BarChart } from '@/components/ui/charts';
 
 const AverageGazePointsChart = () => {
   const [chartData, setChartData] = createSignal<any>(null);
+  const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
 
   onMount(async () => {
-    const data: GazeData[] = await fetchAverageGazePoints();
+    try {
+      const data: GazeData[] = await fetchAverageGazePoints();
 
-    const labels = data.map(d => d.gaze_point_x.toFixed(2)); // Replace with participant names if needed
-    const counts = data.map(d => d.count);
+      const labels = data.map(d => d.participantName);
+      const counts = data.map(d => d.count);
 
-    setChartData({
-      labels,
-      datasets: [
-        {
-          label: 'Average Gaze Points',
-          data: counts,
-          backgroundColor: 'rgba(54, 162, 235, 0.5)'
-        }
-      ]
-    });
+      setChartData({
+        labels,
+        datasets: [
+          {
+            label: 'Average Gaze Points',
+            data: counts,
+            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+          },
+        ],
+      });
+    } catch (err) {
+      setError(`Failed to fetch average gaze points: ${err}`);
+    } finally {
+      setLoading(false);
+    }
   });
 
   return (
@@ -32,7 +40,13 @@ const AverageGazePointsChart = () => {
         <CardTitle>Average Gaze Points per Participant</CardTitle>
       </CardHeader>
       <CardContent class="h-64 w-full">
-        {chartData() ? <BarChart data={chartData()} /> : <p>Loading...</p>}
+        {loading() ? (
+          <p>Loading...</p>
+        ) : error() ? (
+          <p class="text-red-500">{error()}</p>
+        ) : (
+          <BarChart data={chartData()} />
+        )}
       </CardContent>
     </Card>
   );

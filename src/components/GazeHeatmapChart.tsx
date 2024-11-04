@@ -7,25 +7,33 @@ import { ScatterChart } from '@/components/ui/charts';
 
 const GazeHeatmapChart = () => {
   const [chartData, setChartData] = createSignal<any>(null);
+  const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
 
   onMount(async () => {
-    const data: GazeData[] = await fetchGazeHeatmap();
+    try {
+      const data: GazeData[] = await fetchGazeHeatmap();
 
-    const scatterData = data.map(d => ({
-      x: d.gaze_point_x,
-      y: d.gaze_point_y,
-      r: Math.min(d.count, 50) // Adjust radius based on count
-    }));
+      const scatterData = data.map(d => ({
+        x: d.gazePointX,
+        y: d.gazePointY,
+        r: Math.min(d.count, 50), // Adjust radius based on count
+      }));
 
-    setChartData({
-      datasets: [
-        {
-          label: 'Gaze Heatmap',
-          data: scatterData,
-          backgroundColor: 'rgba(255, 99, 132, 0.5)'
-        }
-      ]
-    });
+      setChartData({
+        datasets: [
+          {
+            label: 'Gaze Heatmap',
+            data: scatterData,
+            backgroundColor: 'rgba(255, 99, 132, 0.5)',
+          },
+        ],
+      });
+    } catch (err) {
+      setError(`Failed to fetch heatmap data: ${err}`);
+    } finally {
+      setLoading(false);
+    }
   });
 
   return (
@@ -34,7 +42,13 @@ const GazeHeatmapChart = () => {
         <CardTitle>Gaze Heatmap</CardTitle>
       </CardHeader>
       <CardContent class="h-64 w-full">
-        {chartData() ? <ScatterChart data={chartData()} /> : <p>Loading...</p>}
+        {loading() ? (
+          <p>Loading...</p>
+        ) : error() ? (
+          <p class="text-red-500">{error()}</p>
+        ) : (
+          <ScatterChart data={chartData()} />
+        )}
       </CardContent>
     </Card>
   );
