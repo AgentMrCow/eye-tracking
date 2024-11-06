@@ -1,87 +1,45 @@
-// frontend/src/App.jsx
+// src/TestComponent.tsx
 
-import { createSignal, createEffect, onMount, For } from 'solid-js';
-import { getGazeData } from './utils/tauri';
-import { LineChartComponent, PieChartComponent, BarChartComponent } from './components/Charts';
-import TestSelector from './components/Controls/TestSelector';
-import ParticipantSelector from './components/Controls/ParticipantSelector';
-import { Card, CardContent, CardHeader, CardTitle } from './components/UI/Card';
-import { prepareLineChartData, preparePieChartData, prepareBarChartData } from './utils/dataTransform';
+import { createSignal, onMount } from "solid-js";
+import Database from "@tauri-apps/plugin-sql";
+import { appDataDir } from '@tauri-apps/api/path';
 
-function App() {
-  // State signals
-  const [testName, setTestName] = createSignal('');
-  const [participants, setParticipants] = createSignal([]);
-  const [selectedParticipants, setSelectedParticipants] = createSignal([]);
-  const [gazeData, setGazeData] = createSignal([]);
+export interface Test {
+  test_name: string;
+}
 
-  // Fetch initial data on mount
-  onMount(async () => {
-    // Optionally, fetch available tests and participants from backend
-    // For simplicity, using hardcoded values here
-    setTestName('NOzinghaiT1_TS_video_apr18.mp4 & NOzinghaiT1_image_apr18.png');
-    setParticipants(['TLK311', 'Participant2', 'Participant3']);
-    setSelectedParticipants(['TLK311']); // Default selection
-  });
+function TestComponent() {
+  const [tests, setTests] = createSignal<Test[]>([]);
 
-  // Fetch gaze data whenever testName or selectedParticipants change
-  createEffect(async () => {
-    if (testName() && selectedParticipants().length > 0) {
-      const data = await getGazeData(testName(), selectedParticipants());
-      setGazeData(data);
-    } else {
-      setGazeData([]);
+  const loadTests = async () => {
+    try {
+      const path = await appDataDir();
+      console.log('App directory:', path);
+      const dbPath = `${path}/eye_tracking.db`;
+      console.log('Loading database from path:', dbPath);
+      const db = await Database.load(`sqlite:${dbPath}`);
+      console.log('Database loaded:', db);
+
+      const result = await db.select<Test[]>('SELECT DISTINCT test_name FROM gaze_data');
+      console.log('Fetched tests:', result);
+
+      setTests(result);
+      console.log('Tests set:', tests());
+    } catch (error) {
+      console.error('Error loading tests:', error);
     }
+  };
+
+  onMount(() => {
+    loadTests();
   });
 
   return (
-    <div class="p-4">
-      <h1 class="text-2xl font-bold mb-4">Eye-Tracking Data Visualization</h1>
-      
-      {/* Selection Controls */}
-      <div class="flex space-x-4 mb-6">
-        <TestSelector 
-          selectedTest={testName()} 
-          onSelectTest={(test) => setTestName(test)} 
-        />
-        <ParticipantSelector 
-          participants={participants()} 
-          selectedParticipants={selectedParticipants()} 
-          onSelectParticipants={(selected) => setSelectedParticipants(selected)} 
-        />
-      </div>
-      
-      {/* Charts */}
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Gaze Points Over Time</CardTitle>
-          </CardHeader>
-          <CardContent class="h-64 w-full">
-            <LineChartComponent data={prepareLineChartData(gazeData())} />
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>Box Distribution</CardTitle>
-          </CardHeader>
-          <CardContent class="h-64 w-full">
-            <PieChartComponent data={preparePieChartData(gazeData())} />
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>Participant Comparison</CardTitle>
-          </CardHeader>
-          <CardContent class="h-64 w-full">
-            <BarChartComponent data={prepareBarChartData(gazeData())} />
-          </CardContent>
-        </Card>
-      </div>
+    <div>
+      <h1>Tests</h1>
+      <pre>{JSON.stringify(tests(), null, 2)}</pre>
     </div>
   );
 }
 
-export default App;
+export default TestComponent;
