@@ -19,8 +19,9 @@ import {
   BarChart3,
   Users,
   Layout,
-  Settings
-} from 'lucide-solid';
+  Settings,
+  Table
+} from "lucide-solid";
 
 const navigationItems = [
   {
@@ -32,6 +33,11 @@ const navigationItems = [
     title: "Gaze Analysis",
     url: "/gaze",
     icon: Eye
+  },
+  {
+    title: "Catalog Compare",
+    url: "/compare",
+    icon: Table
   },
   {
     title: "Statistics",
@@ -68,9 +74,10 @@ export function AppSidebar() {
                 {(item) => (
                   <SidebarMenuItem>
                     <SidebarMenuButton>
-                      <A 
-                        href={item.url} 
+                      <A
+                        href={item.url}
                         class="flex items-center gap-2 w-full h-full px-3 py-2"
+                        activeClass="bg-accent text-accent-foreground rounded-md"
                       >
                         <item.icon class="w-4 h-4" />
                         <span>{item.title}</span>

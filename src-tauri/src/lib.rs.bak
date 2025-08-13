@@ -9,9 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 use tauri::path::BaseDirectory;
-use rusqlite::OpenFlags;
-use url::Url;
-use std::time::Duration;
+use anyhow;
 
 /* ──────────────────────────────────────────────────────────────
    Data types
@@ -483,53 +481,97 @@ async fn get_all_recordings(pool: State<'_, DbPool>) -> Result<Vec<RecordingRow>
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .setup(|app| {
-            println!("Setting up the application...");
+.setup(|app| {
+    use std::{fs, time::Duration, path::PathBuf};
+    use rusqlite::OpenFlags;
+    use r2d2_sqlite::SqliteConnectionManager;
+    use tauri::path::BaseDirectory;
 
-            let resource_path = app
-                .path()
-                .resolve("resources/eye_tracking.db", BaseDirectory::Resource)
-                .map_err(|e| {
-                    println!("Failed to resolve DB path: {e}");
-                    e
-                })?;
+    println!("Setting up the application...");
 
-            if resource_path.exists() {
-                println!("DB found at: {:?}", resource_path);
-            } else {
-                println!("DB MISSING at: {:?}", resource_path);
+    // Helper: try to resolve a resource path and return it if it exists.
+    let resolve_if_exists = |rel: &str| -> Option<PathBuf> {
+        match app.path().resolve(rel, BaseDirectory::Resource) {
+            Ok(p) => {
+                println!("Checked resource candidate: {:?}", p);
+                if p.exists() { Some(p) } else { None }
             }
-        let mut url = Url::from_file_path(&resource_path)
-        .map_err(|_| {
-            println!("Bad DB path for URL: {:?}", &resource_path);
-            "bad DB path"
+            Err(e) => {
+                println!("Failed to resolve resource candidate {rel}: {e}");
+                None
+            }
+        }
+    };
+
+    // 1) Find the bundled (read-only) source DB in a robust way.
+    //    We try both names to cover different project layouts.
+    let bundled_db = resolve_if_exists("eye_tracking.db")
+        .or_else(|| resolve_if_exists("resources/eye_tracking.db"))
+        .or_else(|| {
+            // Last-resort dev fallback: ./resources/eye_tracking.db relative to current dir
+            std::env::current_dir().ok().map(|d| {
+                let p = d.join("resources").join("eye_tracking.db");
+                println!("Checked cwd fallback: {:?}", p);
+                p
+            }).filter(|p| p.exists())
+        });
+
+    let bundled_db = match bundled_db {
+        Some(p) => p,
+        None => {
+            // Don’t panic: print a clear error and bail out of setup.
+            let msg = "Bundled DB not found. Ensure the file is included in tauri.conf.json \
+                       (bundle.resources) and/or exists under src-tauri/resources/ or resources/.";
+            println!("{msg}");
+            return Err(anyhow::anyhow!(msg).into());
+        }
+    };
+
+    println!("Using bundled DB at: {:?}", bundled_db);
+
+    // 2) Choose a writable runtime destination and copy on first run.
+    let runtime_db = app.path().resolve("eye_tracking/eye_tracking.db", BaseDirectory::AppData)
+        .map_err(|e| {
+            println!("Failed to resolve AppData path: {e}");
+            e
         })?;
-        url.set_query(Some("mode=ro&immutable=1"));
 
-        let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI;
+    if let Some(dir) = runtime_db.parent() {
+        if let Err(e) = fs::create_dir_all(dir) {
+            println!("Failed to create AppData directory {:?}: {e}", dir);
+            return Err(e.into());
+        }
+    }
 
-        let manager = SqliteConnectionManager::file(url.as_str())
-            .with_flags(flags)
-            .with_init(|c| {
-                // Hard guard: disallow any mutating SQL
-                c.execute_batch("PRAGMA query_only=ON;")?;
-                Ok(())
-            });
+    if !runtime_db.exists() {
+        println!("Copying DB to writable AppData: {:?} → {:?}", bundled_db, runtime_db);
+        fs::copy(&bundled_db, &runtime_db).map_err(|e| {
+            println!("Failed to copy DB: {e}");
+            e
+        })?;
+    } else {
+        println!("Runtime DB already present at: {:?}", runtime_db);
+    }
 
-        // Optional: shorter timeout so failures don’t hang
-        let pool = r2d2::Pool::builder()
-            .max_size(4)
-            .connection_timeout(Duration::from_secs(10))
-            .build(manager)
-            .map_err(|e| {
-                println!("Failed to create DB pool: {e}");
-                e
-            })?;
-
-        app.manage(DbPool(Arc::new(pool)));
-        println!("Setup completed (read-only).");
+    // 3) Open from the writable location (so WAL/SHM can be created).
+    let manager = SqliteConnectionManager::file(&runtime_db).with_init(|c| {
+        c.busy_timeout(Duration::from_secs(5))?;
+        // Optional: force a known journal mode; comment out if you prefer the DB’s existing mode.
+        // c.execute_batch("PRAGMA journal_mode=WAL;")?;
         Ok(())
-        })
+    });
+
+    let pool = r2d2::Pool::new(manager).map_err(|e| {
+        println!("Failed to create DB pool: {e}");
+        e
+    })?;
+
+    app.manage(DbPool(std::sync::Arc::new(pool)));
+
+    println!("Setup completed.");
+    Ok(())
+})
+
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![

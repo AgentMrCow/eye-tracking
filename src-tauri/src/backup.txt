@@ -9,9 +9,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 use tauri::path::BaseDirectory;
-use rusqlite::OpenFlags;
-use url::Url;
-use std::time::Duration;
 
 /* ──────────────────────────────────────────────────────────────
    Data types
@@ -499,36 +496,16 @@ pub fn run() {
             } else {
                 println!("DB MISSING at: {:?}", resource_path);
             }
-        let mut url = Url::from_file_path(&resource_path)
-        .map_err(|_| {
-            println!("Bad DB path for URL: {:?}", &resource_path);
-            "bad DB path"
-        })?;
-        url.set_query(Some("mode=ro&immutable=1"));
 
-        let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI;
-
-        let manager = SqliteConnectionManager::file(url.as_str())
-            .with_flags(flags)
-            .with_init(|c| {
-                // Hard guard: disallow any mutating SQL
-                c.execute_batch("PRAGMA query_only=ON;")?;
-                Ok(())
-            });
-
-        // Optional: shorter timeout so failures don’t hang
-        let pool = r2d2::Pool::builder()
-            .max_size(4)
-            .connection_timeout(Duration::from_secs(10))
-            .build(manager)
-            .map_err(|e| {
+            let manager = SqliteConnectionManager::file(&resource_path);
+            let pool = Pool::new(manager).map_err(|e| {
                 println!("Failed to create DB pool: {e}");
                 e
             })?;
 
-        app.manage(DbPool(Arc::new(pool)));
-        println!("Setup completed (read-only).");
-        Ok(())
+            app.manage(DbPool(Arc::new(pool)));
+            println!("Setup completed.");
+            Ok(())
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())

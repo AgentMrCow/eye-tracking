@@ -27,3 +27,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 tokio = { version = "1", features = ["full"] }
 r2d2 = "0.8"
 r2d2_sqlite = "0.25"
+base64 = "0.22.1"
+anyhow = "1.0.99"
+url = "2.5.4"

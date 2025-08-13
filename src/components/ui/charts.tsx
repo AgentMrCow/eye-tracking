@@ -16,6 +16,7 @@ import type {
   ChartTypeRegistry,
   TooltipModel
 } from "chart.js"
+import annotationPlugin from "chartjs-plugin-annotation"
 import {
   ArcElement,
   BarController,
@@ -36,9 +37,14 @@ import {
   RadarController,
   RadialLinearScale,
   ScatterController,
+  TimeScale,
   Tooltip
 } from "chart.js"
+import zoomPlugin from "chartjs-plugin-zoom";
+import "chartjs-adapter-date-fns"
 
+// just add the extra scale once to the global registry
+Chart.register(TimeScale, annotationPlugin, zoomPlugin)
 type TypedChartProps = {
   data: ChartData
   options?: ChartOptions
@@ -261,7 +267,8 @@ const LineChart = /* #__PURE__ */ createTypedChart("line", [
   LineElement,
   PointElement,
   CategoryScale,
-  LinearScale
+  LinearScale,
+  TimeScale
 ])
 const PieChart = /* #__PURE__ */ createTypedChart("pie", [PieController, ArcElement])
 const PolarAreaChart = /* #__PURE__ */ createTypedChart("polarArea", [

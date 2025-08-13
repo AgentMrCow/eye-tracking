@@ -6,8 +6,15 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import type { RouteSectionProps } from "@solidjs/router";
 
 // Lazy load components
-const GazeAnalysis = lazy(() => import("@/components/gaze-analysis"));
-const NotFound = lazy(() => import("@/components/not-found"));
+const GazeAnalysis = lazy(() =>
+  import("@/components/gaze-analysis").then(m => ({ default: m.default }))
+);
+const CatalogCompare = lazy(() =>
+  import("@/components/catalog-compare").then(m => ({ default: m.default }))
+);
+const NotFound    = lazy(() =>
+  import("@/components/not-found").then(m => ({ default: m.default }))
+);
 
 function Layout(props: RouteSectionProps<unknown>) {
   return (
@@ -27,12 +34,12 @@ function Layout(props: RouteSectionProps<unknown>) {
 export default function App() {
   return (
     <Router>
-      <Route
-        path="/"
-        component={Layout}
-      >
+      <Route path="/" component={Layout}>
         <Route path="/" component={GazeAnalysis} />
         <Route path="/gaze" component={GazeAnalysis} />
+        {/* NEW page */}
+        <Route path="/compare" component={CatalogCompare} />
+        {/* keep existing placeholders pointing to gaze until you split them */}
         <Route path="/stats" component={GazeAnalysis} />
         <Route path="/participants" component={GazeAnalysis} />
         <Route path="/settings" component={GazeAnalysis} />
