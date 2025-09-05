@@ -48,6 +48,9 @@ type RecordingRow = {
   gaze_samples?: number | string | null;
 };
 
+/* NEW: (timeline, recording) pair for the extra selectors */
+type TLRec = { timeline: string; recording: string };
+
 /* ── defaults ─ */
 const DEF_INTERVAL_MS = 100;
 const DEF_PX_PER_SEC  = 40;
@@ -92,6 +95,13 @@ const GazeAnalysis = () => {
 /* reactive state */
 const [selectedTest, setSelectedTest] = createSignal<SelectOption|null>(null);
 const [selectedPart, setSelectedPart] = createSignal<SelectOption|null>(null);
+
+/* NEW: timeline/recording selection */
+const [pairs, setPairs] = createSignal<TLRec[]>([]);
+const [timelineOptions, setTimelineOptions] = createSignal<string[]>([]);
+const [recordingOptions, setRecordingOptions] = createSignal<string[]>([]);
+const [selectedTimeline, setSelectedTimeline] = createSignal<string|null>(null);
+const [selectedRecording, setSelectedRecording] = createSignal<string|null>(null);
 
 const [tests,setTests]               = createSignal<SelectOption[]>([]);
 const [participants,setParticipants] = createSignal<SelectOption[]>([]);
@@ -288,15 +298,60 @@ createEffect(() => {
   ch.update();
 });
 
-/* test image */
+/* test image (disambiguate by timeline if provided) */
 createEffect(async () => {
   if (!selectedTest()) { setTestImgB64(null); return; }
   const b64 = await invoke<string | null>("get_test_image",
-               { testName: selectedTest()!.value }).catch(() => null);
+               { testName: selectedTest()!.value, timeline: selectedTimeline() })
+               .catch(() => null);
   setTestImgB64(b64);
 });
 const imgUrl = createMemo(() =>
   testImgB64() ? `data:image/png;base64,${testImgB64()}` : null);
+
+/* NEW: load (timeline, recording) pairs when test/participant changes */
+createEffect(async ()=>{
+  setPairs([]);
+  setSelectedTimeline(null);
+  setSelectedRecording(null);
+  if(!selectedTest() || !selectedPart()) return;
+
+  const out = await invoke<TLRec[]>("get_timeline_recordings",{
+    testName:selectedTest()!.value,
+    participants:[selectedPart()!.value]
+  }).catch(()=>[]);
+
+  setPairs(out);
+  const ts = Array.from(new Set(out.map(p=>p.timeline)));
+  const rs = Array.from(new Set(out.map(p=>p.recording)));
+  setTimelineOptions(ts);
+  setRecordingOptions(rs);
+
+  if (out.length === 1) {
+    setSelectedTimeline(out[0].timeline);
+    setSelectedRecording(out[0].recording);
+  }
+});
+
+/* Keep options in sync (prevent impossible pairs) */
+createEffect(()=>{
+  const rs = Array.from(new Set(
+    pairs()
+      .filter(p=>!selectedTimeline() || p.timeline===selectedTimeline())
+      .map(p=>p.recording)
+  ));
+  setRecordingOptions(rs);
+  if (selectedRecording() && !rs.includes(selectedRecording()!)) setSelectedRecording(null);
+});
+createEffect(()=>{
+  const ts = Array.from(new Set(
+    pairs()
+      .filter(p=>!selectedRecording() || p.recording===selectedRecording())
+      .map(p=>p.timeline)
+  ));
+  setTimelineOptions(ts);
+  if (selectedTimeline() && !ts.includes(selectedTimeline()!)) setSelectedTimeline(null);
+});
 
 /* base time helpers */
 const baseMs = () => gaze().length ? +new Date(gaze()[0].timestamp) : 0;
@@ -334,16 +389,23 @@ createEffect(async()=>{
 });
 
 /* ── fetch gaze + stats when selection changes ─ */
+const needsChoice = createMemo(() =>
+  pairs().length > 1 && (!selectedTimeline() || !selectedRecording())
+);
+
 createEffect(async()=>{
   if(!selectedTest()||!selectedPart()) return;
+  if (needsChoice()) { setGaze([]); setBoxStats({}); setRows([]); return; }
 
   const data = await invoke<GazeData[]>("get_gaze_data",{
     testName:selectedTest()!.value,
-    participants:[selectedPart()!.value]
+    participants:[selectedPart()!.value],
+    timeline:selectedTimeline(),
+    recording:selectedRecording(),
   }).catch(()=>[]);
 
-  // record the recording name used by this selection
-  const rec = data.length ? (data[0] as any).recording || (data[0] as any).recording_name || (data[0] as any)["Recording name"] : null;
+  // prefer the explicitly selected recording (if any)
+  const rec = selectedRecording() ?? (data.length ? (data[0] as any).recording || (data[0] as any).recording_name || (data[0] as any)["Recording name"] : null);
   setRecordingName(rec ?? null);
   const pct = rec ? recIndex()[rec] ?? null : null;
   setRecordingPct(pct);
@@ -354,7 +416,10 @@ createEffect(async()=>{
   setGaze(blocked ? [] : data);
 
   const stats = await invoke<{box_percentages:Record<string,number>}>("get_box_stats",{
-    testName:selectedTest()!.value,participants:[selectedPart()!.value]
+    testName:selectedTest()!.value,
+    participants:[selectedPart()!.value],
+    timeline:selectedTimeline(),
+    recording:selectedRecording(),
   }).catch(()=>({box_percentages:{}}));
   setBoxStats(blocked ? {} : stats.box_percentages);
   setStatsWhole(blocked ? {pct_including_missing:0,pct_excluding_missing:0,pct_excluding_missing_oob:0}
@@ -367,7 +432,6 @@ createEffect(()=>{
   if (pct === null) return;
   const blocked = pct < minValidPct();
   setBlockedByQuality(blocked);
-  // do not refetch; just clear / restore rows from last fetch
   if (blocked) { setGaze([]); setBoxStats({}); setRows([]); }
 });
 
@@ -414,11 +478,13 @@ createEffect(()=>{
   setXRange(xs.length?[Math.min(...xs),Math.max(...xs)]:null);
 });
 
-/* fetch word windows */
+/* fetch word windows (with timeline) */
 createEffect(async()=>{
   if(!selectedTest()) return setWordWin([]);
-  const ww=await invoke<WordWindow[]>("get_word_windows",{testName:selectedTest()!.value})
-           .catch(()=>[]);
+  const ww=await invoke<WordWindow[]>("get_word_windows",{
+            testName:selectedTest()!.value,
+            timeline:selectedTimeline()
+          }).catch(()=>[]);
   setWordWin(ww);
 });
 
@@ -686,6 +752,36 @@ return (
       </SelectTrigger><SelectContent/>
     </Select>
 
+    {/* NEW: Timeline select */}
+    <Show when={timelineOptions().length > 0}>
+      <Select<string>
+        value={selectedTimeline() ?? ""}
+        onChange={v => setSelectedTimeline(v || null)}
+        options={timelineOptions()}
+        placeholder="Select timeline…"
+        itemComponent={p=><SelectItem item={p.item}>{p.item.rawValue}</SelectItem>}>
+        <SelectTrigger class="w-48">
+          <SelectValue>{()=>selectedTimeline() ?? "Select timeline…"}</SelectValue>
+        </SelectTrigger>
+        <SelectContent/>
+      </Select>
+    </Show>
+
+    {/* NEW: Recording select */}
+    <Show when={recordingOptions().length > 0}>
+      <Select<string>
+        value={selectedRecording() ?? ""}
+        onChange={v => setSelectedRecording(v || null)}
+        options={recordingOptions()}
+        placeholder="Select recording…"
+        itemComponent={p=><SelectItem item={p.item}>{p.item.rawValue}</SelectItem>}>
+        <SelectTrigger class="w-48">
+          <SelectValue>{()=>selectedRecording() ?? "Select recording…"}</SelectValue>
+        </SelectTrigger>
+        <SelectContent/>
+      </Select>
+    </Show>
+
     {/* numeric controls */}
     <label class="text-sm flex items-center gap-1">
       Sampling&nbsp;interval&nbsp;(ms):
@@ -740,9 +836,10 @@ return (
   </p>
 
   {/* quick status line for recording quality */}
-  <Show when={selectedTest() && recordingName()}>
+  <Show when={selectedTest() && (recordingName() || selectedTimeline())}>
     <div class="text-xs text-muted-foreground">
-      Recording: <span class="font-medium">{recordingName()}</span>
+      {selectedTimeline() && <>Timeline: <span class="font-medium">{selectedTimeline()}</span></>}
+      {recordingName() && <> · Recording: <span class="font-medium">{recordingName()}</span></>}
       {recordingPct()!==null && <> · valid {recordingPct()}%</>}
       {blockedByQuality() &&
         <span class="ml-2 px-2 py-0.5 rounded bg-yellow-100 text-yellow-800">
@@ -750,6 +847,14 @@ return (
         </span>}
     </div>
   </Show>
+
+  {/* Guard when multiple sessions exist but user hasn’t chosen */}
+  <Show when={!needsChoice()} fallback={
+    <div class="p-3 rounded bg-yellow-50 text-yellow-800 text-sm">
+      Multiple sessions found for this test and participant.<br/>
+      Please choose a <b>timeline</b> and <b>recording</b> above before rendering.
+    </div>
+  }>
 
   {/* charts grid */}
   <div class="grid gap-6 xl:grid-cols-2">
@@ -949,6 +1054,8 @@ return (
       </CardContent>
     </Card>
   </div>
+
+  </Show>
 </div>
 );
 };
