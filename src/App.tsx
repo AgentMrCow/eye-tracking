@@ -7,10 +7,10 @@ import type { RouteSectionProps } from "@solidjs/router";
 
 // Lazy load components
 const GazeAnalysis = lazy(() =>
-  import("@/components/gaze-analysis").then(m => ({ default: m.default }))
+  import("@/features/gaze").then(m => ({ default: m.GazeAnalysis }))
 );
 const CatalogCompare = lazy(() =>
-  import("@/components/catalog-compare").then(m => ({ default: m.default }))
+  import("@/features/catalog").then(m => ({ default: m.CatalogCompare }))
 );
 const NotFound    = lazy(() =>
   import("@/components/not-found").then(m => ({ default: m.default }))
