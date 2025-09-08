@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, onMount } from "solid-js";
 import type { BoxTypes, GazeData, TLRec, WordWindow } from "../types";
-import { getCatalog, getGazeData, getParticipants, getTimelineRecordings, getTestImage, getWordWindows } from "../services/gazeApi";
+import { getAllCatalog as getCatalog, getGazeData, getParticipants, getTimelineRecordings, getTestImage, getWordWindows } from "../services/gazeApi";
 import { usePlayback } from "../../catalog/hooks/usePlayback";
 import { useSeries } from "../../catalog/hooks/useSeries";
 

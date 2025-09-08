@@ -2,8 +2,9 @@ use base64::{engine::general_purpose, Engine as _};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{OpenFlags, OptionalExtension, Result as SqlResult};
+use rusqlite::types::Value as SqlValue;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -68,12 +69,21 @@ fn table_exists(conn: &rusqlite::Connection, name: &str) -> bool {
     stmt.exists([name]).unwrap_or(false)
 }
 
-/* Dump an entire small table as Vec<HashMap<col, Option<String>>> */
+fn value_to_string(v: SqlValue) -> Option<String> {
+    match v {
+        SqlValue::Null => None,
+        SqlValue::Integer(i) => Some(i.to_string()),
+        SqlValue::Real(f) => Some(f.to_string()),
+        SqlValue::Text(t) => Some(t),                          // <- TEXT already a String
+        SqlValue::Blob(b) => Some(general_purpose::STANDARD.encode(b)),
+    }
+}
+
+/* Dump any table as Vec<RowMap> (String/None for all columns) */
 fn dump_table(conn: &rusqlite::Connection, table: &str) -> Result<Vec<RowMap>, String> {
     if !table_exists(conn, table) {
         return Ok(vec![]);
     }
-    // discover column names in order
     let mut cstmt = conn
         .prepare(&format!("PRAGMA table_info({})", table))
         .map_err(|e| e.to_string())?;
@@ -87,44 +97,37 @@ fn dump_table(conn: &rusqlite::Connection, table: &str) -> Result<Vec<RowMap>, S
         return Ok(vec![]);
     }
 
-    // SELECT "c1","c2",... to preserve exact names (with spaces)
     let mut select_sql = String::from("SELECT ");
     for (i, c) in cols.iter().enumerate() {
-        if i > 0 {
-            select_sql.push(',');
-        }
-        select_sql.push('"');
-        select_sql.push_str(c);
-        select_sql.push('"');
+        if i > 0 { select_sql.push(','); }
+        select_sql.push('"'); select_sql.push_str(c); select_sql.push('"');
     }
-    select_sql.push_str(" FROM ");
-    select_sql.push_str(table);
+    select_sql.push_str(" FROM "); select_sql.push_str(table);
 
     let mut stmt = conn.prepare(&select_sql).map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |row| {
-            let mut map = RowMap::new();
-            for (i, name) in cols.iter().enumerate() {
-                let v: Option<String> = row.get(i)?; // read everything as string
-                map.insert(name.clone(), v);
-            }
-            Ok(map)
-        })
-        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| {
+        let mut map = RowMap::new();
+        for (i, name) in cols.iter().enumerate() {
+            let v: SqlValue = row.get(i)?;
+            map.insert(name.clone(), value_to_string(v));
+        }
+        Ok(map)
+    }).map_err(|e| e.to_string())?;
 
-    Ok(rows
-        .collect::<SqlResult<Vec<RowMap>>>()
-        .map_err(|e| e.to_string())?)
+    Ok(rows.collect::<SqlResult<Vec<RowMap>>>().map_err(|e| e.to_string())?)
 }
 
-/* Return distinct, trimmed strings from a table.column (if table exists) */
+/* Cast to TEXT + TRIM; quote spaced column names safely */
 fn distinct_nonempty(conn: &rusqlite::Connection, table: &str, col: &str) -> Result<Vec<String>, String> {
     if !table_exists(conn, table) {
         return Ok(vec![]);
     }
     let sql = format!(
-        "SELECT DISTINCT TRIM(\"{}\") AS val FROM {} WHERE {} IS NOT NULL AND TRIM(\"{}\") <> '' ORDER BY val",
-        col, table, col, col
+        "SELECT DISTINCT TRIM(CAST(\"{col}\" AS TEXT)) AS val
+         FROM {table}
+         WHERE \"{col}\" IS NOT NULL
+           AND TRIM(CAST(\"{col}\" AS TEXT)) <> ''
+         ORDER BY val"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let vals = stmt
@@ -139,50 +142,31 @@ fn distinct_nonempty(conn: &rusqlite::Connection, table: &str, col: &str) -> Res
 Commands
 ────────────────────────────────────────────────────────────── */
 
-/* 1) One-shot bootstrap: fetch all small tables (full rows) */
+/* 1) Bootstrap: fetch small tables. (Skip huge test_group) */
 #[tauri::command]
 async fn get_static_data(pool: State<'_, DbPool>) -> Result<StaticData, String> {
     let conn = pool.0.get().map_err(|e| e.to_string())?;
 
-    // Full dumps
+    // Full dumps — do NOT fetch test_group
     let test_catalog = dump_table(&conn, "test_catalog")?;
-    let test_group = dump_table(&conn, "test_group")?;   // ~2.8k rows
-    let recordings  = dump_table(&conn, "recordings")?;
+    let recordings   = dump_table(&conn, "recordings")?;
+    let test_group: Vec<RowMap> = Vec::new();
 
-    // Derive compact lists from small tables only
-    let mut pset: HashSet<String> = HashSet::new();
-    for p in distinct_nonempty(&conn, "recordings", "Participant")? {
-        pset.insert(p);
-    }
-    for p in distinct_nonempty(&conn, "test_group", "Participant name")? {
-        pset.insert(p);
-    }
-    let mut participants: Vec<String> = pset.into_iter().collect();
-    participants.sort();
+    // Participants from recordings
+    let participants = distinct_nonempty(&conn, "recordings", "Participant")?;
 
-    let mut tset: HashSet<String> = HashSet::new();
-    for t in distinct_nonempty(&conn, "test_catalog", "test_name")? {
-        tset.insert(t);
-    }
-    for t in distinct_nonempty(&conn, "test_group", "test_name")? {
-        tset.insert(t);
-    }
-    let mut test_names: Vec<String> = tset.into_iter().collect();
-    test_names.sort();
+    // Test names from test_catalog
+    let test_names = distinct_nonempty(&conn, "test_catalog", "test_name")?;
 
-    Ok(StaticData {
-        test_catalog,
-        test_group,
-        recordings,
-        participants,
-        test_names,
-    })
+    Ok(StaticData { test_catalog, test_group, recordings, participants, test_names })
 }
 
-/* 2) Heavy data: filtered gaze stream (with optional limit/offset) */
+/* 2) Heavy data: filtered gaze stream (with optional limit/offset)
+     Accept BOTH `test_name` and `testName` from JS. */
 #[tauri::command]
 async fn get_gaze_data(
-    test_name: String,
+    test_name: Option<String>,
+    testName: Option<String>,
     participants: Vec<String>,
     timeline: Option<String>,
     recording: Option<String>,
@@ -191,8 +175,8 @@ async fn get_gaze_data(
     pool: State<'_, DbPool>,
 ) -> Result<Vec<GazeData>, String> {
     let conn = pool.0.get().map_err(|e| e.to_string())?;
+    let test = test_name.or(testName).ok_or_else(|| "missing param: test_name/testName".to_string())?;
 
-    // Hoist to outer scope so we can safely &-borrow them into params.
     let lim_guard: i64 = limit.unwrap_or(0);
     let off_guard: i64 = offset.unwrap_or(0);
 
@@ -211,38 +195,24 @@ async fn get_gaze_data(
         query.push_str(&vec!["?"; participants.len()].join(","));
         query.push(')');
     }
-    if timeline.is_some() {
-        query.push_str(" AND \"Timeline name\" = ?");
-    }
-    if recording.is_some() {
-        query.push_str(" AND \"Recording name\" = ?");
-    }
+    if timeline.is_some() { query.push_str(" AND \"Timeline name\" = ?"); }
+    if recording.is_some() { query.push_str(" AND \"Recording name\" = ?"); }
     query.push_str(" ORDER BY \"Exact time\"");
 
     if lim_guard > 0 {
         query.push_str(" LIMIT ?");
-        if off_guard > 0 {
-            query.push_str(" OFFSET ?");
-        }
+        if off_guard > 0 { query.push_str(" OFFSET ?"); }
     }
 
     let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
 
-    let mut params: Vec<&dyn rusqlite::ToSql> = vec![&test_name];
-    for p in &participants {
-        params.push(p);
-    }
-    if let Some(ref tl) = timeline {
-        params.push(tl);
-    }
-    if let Some(ref rc) = recording {
-        params.push(rc);
-    }
+    let mut params: Vec<&dyn rusqlite::ToSql> = vec![&test];
+    for p in &participants { params.push(p); }
+    if let Some(ref tl) = timeline { params.push(tl); }
+    if let Some(ref rc) = recording { params.push(rc); }
     if lim_guard > 0 {
         params.push(&lim_guard);
-        if off_guard > 0 {
-            params.push(&off_guard);
-        }
+        if off_guard > 0 { params.push(&off_guard); }
     }
 
     let rows = stmt
@@ -264,15 +234,16 @@ async fn get_gaze_data(
     Ok(rows.collect::<rusqlite::Result<Vec<GazeData>>>().map_err(|e| e.to_string())?)
 }
 
-
 /* 3) Distinct (timeline, recording) for a test + optional participants */
 #[tauri::command]
 async fn get_timeline_recordings(
-    test_name: String,
+    test_name: Option<String>,
+    testName: Option<String>,
     participants: Vec<String>,
     pool: State<'_, DbPool>,
 ) -> Result<Vec<TimelineRecording>, String> {
     let conn = pool.0.get().map_err(|e| e.to_string())?;
+    let test = test_name.or(testName).ok_or_else(|| "missing param: test_name/testName".to_string())?;
 
     let mut query = String::from(
         r#"
@@ -290,35 +261,30 @@ async fn get_timeline_recordings(
     query.push_str(r#" ORDER BY "Timeline name", "Recording name""#);
 
     let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
-    let mut params: Vec<&dyn rusqlite::ToSql> = vec![&test_name];
-    for p in &participants {
-        params.push(p);
-    }
+    let mut params: Vec<&dyn rusqlite::ToSql> = vec![&test];
+    for p in &participants { params.push(p); }
 
     let rows = stmt
         .query_map(rusqlite::params_from_iter(params), |row| {
-            Ok(TimelineRecording {
-                timeline: row.get(0)?,
-                recording: row.get(1)?,
-            })
+            Ok(TimelineRecording { timeline: row.get(0)?, recording: row.get(1)? })
         })
         .map_err(|e| e.to_string())?;
 
-    Ok(rows
-        .collect::<SqlResult<Vec<TimelineRecording>>>()
-        .map_err(|e| e.to_string())?)
+    Ok(rows.collect::<SqlResult<Vec<TimelineRecording>>>().map_err(|e| e.to_string())?)
 }
 
 /* 4) Box share stats for filtered slice */
 #[tauri::command]
 async fn get_box_stats(
-    test_name: String,
+    test_name: Option<String>,
+    testName: Option<String>,
     participants: Vec<String>,
     timeline: Option<String>,
     recording: Option<String>,
     pool: State<'_, DbPool>,
 ) -> Result<GazeStats, String> {
     let conn = pool.0.get().map_err(|e| e.to_string())?;
+    let test = test_name.or(testName).ok_or_else(|| "missing param: test_name/testName".to_string())?;
 
     let mut query = String::from(
         r#"
@@ -333,26 +299,16 @@ async fn get_box_stats(
         query.push_str(&vec!["?"; participants.len()].join(","));
         query.push(')');
     }
-    if timeline.is_some() {
-        query.push_str(" AND \"Timeline name\" = ?");
-    }
-    if recording.is_some() {
-        query.push_str(" AND \"Recording name\" = ?");
-    }
+    if timeline.is_some() { query.push_str(" AND \"Timeline name\" = ?"); }
+    if recording.is_some() { query.push_str(" AND \"Recording name\" = ?"); }
     query.push_str(" GROUP BY Box");
 
     let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
 
-    let mut params: Vec<&dyn rusqlite::ToSql> = vec![&test_name];
-    for p in &participants {
-        params.push(p);
-    }
-    if let Some(ref tl) = timeline {
-        params.push(tl);
-    }
-    if let Some(ref rc) = recording {
-        params.push(rc);
-    }
+    let mut params: Vec<&dyn rusqlite::ToSql> = vec![&test];
+    for p in &participants { params.push(p); }
+    if let Some(ref tl) = timeline { params.push(tl); }
+    if let Some(ref rc) = recording { params.push(rc); }
 
     let mut box_counts = HashMap::new();
     let mut total_points = 0i64;
@@ -374,21 +330,20 @@ async fn get_box_stats(
         *count = (*count / total_points as f64) * 100.0;
     }
 
-    Ok(GazeStats {
-        box_percentages: box_counts,
-        total_points,
-    })
+    Ok(GazeStats { box_percentages: box_counts, total_points })
 }
 
 /* 5) On-demand image loader (base64) */
 #[tauri::command]
 async fn get_test_image(
     app: AppHandle,
-    test_name: String,
+    test_name: Option<String>,
+    testName: Option<String>,
     timeline: Option<String>,
     pool: State<'_, DbPool>,
 ) -> Result<Option<String>, String> {
     let conn = pool.0.get().map_err(|e| e.to_string())?;
+    let test = test_name.or(testName).ok_or_else(|| "missing param: test_name/testName".to_string())?;
 
     let try_sqls: [&str; 3] = [
         // exact + timeline
@@ -422,7 +377,7 @@ async fn get_test_image(
     if let Some(ref tl) = timeline {
         if let Ok(mut stmt) = conn.prepare(try_sqls[0]) {
             image_path = stmt
-                .query_row(rusqlite::params![&test_name, tl], |row| {
+                .query_row(rusqlite::params![&test, tl], |row| {
                     row.get::<_, Option<String>>("image_path")
                 })
                 .optional()
@@ -434,9 +389,7 @@ async fn get_test_image(
     if image_path.is_none() {
         let mut stmt = conn.prepare(try_sqls[1]).map_err(|e| e.to_string())?;
         image_path = stmt
-            .query_row([&test_name], |row| {
-                row.get::<_, Option<String>>("image_path")
-            })
+            .query_row([&test], |row| row.get::<_, Option<String>>("image_path"))
             .optional()
             .map_err(|e| e.to_string())?
             .flatten();
@@ -445,20 +398,14 @@ async fn get_test_image(
     if image_path.is_none() {
         let mut stmt = conn.prepare(try_sqls[2]).map_err(|e| e.to_string())?;
         image_path = stmt
-            .query_row([&test_name], |row| {
-                row.get::<_, Option<String>>("image_path")
-            })
+            .query_row([&test], |row| row.get::<_, Option<String>>("image_path"))
             .optional()
             .map_err(|e| e.to_string())?
             .flatten();
     }
 
-    let Some(rel) = image_path else {
-        return Ok(None);
-    };
-    if rel.trim().is_empty() {
-        return Ok(None);
-    }
+    let Some(rel) = image_path else { return Ok(None); };
+    if rel.trim().is_empty() { return Ok(None); }
 
     let base = app
         .path()

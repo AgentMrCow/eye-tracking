@@ -3,100 +3,180 @@ import { z } from "zod";
 import type {
   CatalogRow, GazeData, RecordingRow, TestMeta, TLRec, WordWindow
 } from "../types";
+import type { StaticData, RowMap } from "@/shared/type";
 
-const GazeSchema: z.ZodType<GazeData> = z.object({
-  gaze_x: z.number().nullable(),
-  gaze_y: z.number().nullable(),
-  box_name: z.string(),
-  timestamp: z.string(),
-  participant: z.string(),
-  test_name: z.string(),
-  recording: z.string().optional(),
-});
-
-const WordWindowSchema: z.ZodType<WordWindow> = z.object({
-  chinese_word: z.string(),
-  start_sec: z.number(),
-  end_sec: z.number(),
-  test_name: z.string(),
-  timeline: z.string(),
-});
+/* Schemas */
+const GazeSchema: z.ZodType<GazeData> = z
+  .object({
+    gaze_x: z.number().nullable(),
+    gaze_y: z.number().nullable(),
+    box_name: z.string(),
+    media_name: z.string(),
+    timeline: z.string(),
+    participant: z.string(),
+    recording: z.string(),
+    timestamp: z.string(),
+    test_name: z.string(),
+  })
+  .catchall(z.any());
 
 const TLRecSchema: z.ZodType<TLRec> = z.object({
   timeline: z.string(),
   recording: z.string(),
 });
 
-const CatalogRowSchema: z.ZodType<CatalogRow> = z.object({
-  test_name: z.string(),
-  group: z.string().nullable().optional(),
-  correct_AOIs: z.string().nullable().optional(),
-  potentially_correct_AOIs: z.string().nullable().optional(),
-  incorrect_AOIs: z.string().nullable().optional(),
-  correct_NULL: z.string().nullable().optional(),
-  potentially_correct_NULL: z.string().nullable().optional(),
-  incorrect_NULL: z.string().nullable().optional(),
-});
+const CatalogRowSchema: z.ZodType<CatalogRow> = z
+  .object({
+    test_name: z.string(),
+    sentence: z.string().nullable().optional(),
+    group: z.string().nullable().optional(),
+    correct_AOIs: z.string().nullable().optional(),
+    potentially_correct_AOIs: z.string().nullable().optional(),
+    incorrect_AOIs: z.string().nullable().optional(),
+    correct_NULL: z.string().nullable().optional(),
+    potentially_correct_NULL: z.string().nullable().optional(),
+    incorrect_NULL: z.string().nullable().optional(),
+    truth_value: z.string().nullable().optional(),
+    only_position: z.string().nullable().optional(),
+    morpheme: z.string().nullable().optional(),
+    series: z.string().nullable().optional(),
+    case_no: z.coerce.number().nullable().optional(),
+  })
+  .catchall(z.any());
 
-const TestMetaSchema: z.ZodType<TestMeta> = z.object({
-  test_name: z.string(),
-  truth_value: z.string().nullable().optional(),
-  only_position: z.string().nullable().optional(),
-  morpheme: z.string().nullable().optional(),
-  series: z.string().nullable().optional(),
-  case_no: z.number().nullable().optional(),
-});
+const TestMetaSchema: z.ZodType<TestMeta> = z
+  .object({
+    test_name: z.string(),
+    truth_value: z.string().nullable().optional(),
+    only_position: z.string().nullable().optional(),
+    morpheme: z.string().nullable().optional(),
+    series: z.string().nullable().optional(),
+  })
+  .catchall(z.any());
 
-const RecordingRowSchema: z.ZodType<RecordingRow> = z.object({
-  recording: z.string(),
-  gaze_samples: z.union([z.number(), z.string()]).nullable().optional(),
-});
+const RecordingRowSchema: z.ZodType<RecordingRow> = z
+  .object({
+    test_name: z.string(),
+    participant: z.string(),
+    recording: z.string(),
+    valid: z.coerce.number().nullable().optional(),
+    total: z.coerce.number().nullable().optional(),
+    blue: z.coerce.number().nullable().optional(),
+    red: z.coerce.number().nullable().optional(),
+    pctBlue: z.coerce.number().nullable().optional(),
+  })
+  .catchall(z.any());
 
+/* StaticData bootstrap (cached) */
+let _staticData: Promise<StaticData> | null = null;
+async function getStatic(): Promise<StaticData> {
+  if (!_staticData) {
+    _staticData = invoke<StaticData>("get_static_data").catch((err) => {
+      _staticData = null;
+      throw err;
+    });
+  }
+  return _staticData;
+}
+
+function rowMapTo<T>(row: RowMap, schema: z.ZodType<T>): T {
+  return schema.parse(row as unknown as Record<string, unknown>);
+}
+
+/* --- helper: normalize test name param --- */
+function pickTestName(p: { testName?: string; test_name?: string }): string {
+  return (p.test_name ?? p.testName) ?? "";
+}
+
+/* API mirrored by hooks */
 export async function getTestNames(): Promise<string[]> {
-  const raw = await invoke<string[]>("get_test_names").catch(() => []);
-  return z.array(z.string()).parse(raw);
+  const s = await getStatic();
+  return s.test_names ?? [];
 }
+
 export async function getParticipants(): Promise<string[]> {
-  const raw = await invoke<string[]>("get_participants").catch(() => []);
-  return z.array(z.string()).parse(raw);
+  const s = await getStatic();
+  return s.participants ?? [];
 }
+
 export async function getAllTestMeta(): Promise<TestMeta[]> {
-  const raw = await invoke<TestMeta[]>("get_all_test_meta").catch(() => []);
-  return z.array(TestMetaSchema).parse(raw);
+  const s = await getStatic();
+  // derive meta straight from test_catalog; test_group is not shipped
+  return (s.test_catalog ?? []).map((r) =>
+    rowMapTo(r, TestMetaSchema)
+  );
 }
+
 export async function getAllCatalog(): Promise<CatalogRow[]> {
-  const raw = await invoke<CatalogRow[]>("get_all_test_catelog").catch(() => []);
-  return z.array(CatalogRowSchema).parse(raw);
+  const s = await getStatic();
+  return (s.test_catalog ?? []).map((r) => rowMapTo(r, CatalogRowSchema));
 }
+
 export async function getAllRecordings(): Promise<RecordingRow[]> {
-  const raw = await invoke<RecordingRow[]>("get_all_recordings").catch(() => []);
-  return z.array(RecordingRowSchema).parse(raw);
+  const s = await getStatic();
+  return (s.recordings ?? []).map((r) => rowMapTo(r, RecordingRowSchema));
 }
-export async function getAoiMap(testName: string): Promise<{ region_id: string; rgb_hex?: string | null }[]> {
-  const raw = await invoke<{ region_id: string; rgb_hex?: string | null }[]>("get_aoi_map", { testName }).catch(() => []);
-  return z.array(z.object({ region_id: z.string(), rgb_hex: z.string().nullable().optional() })).parse(raw);
+
+export async function getAoiMap(_testName: string): Promise<RowMap[]> {
+  return [];
 }
-export async function getTimelineRecordings(params: { testName: string; participants: string[] }): Promise<TLRec[]> {
-  const raw = await invoke<TLRec[]>("get_timeline_recordings", params).catch(() => []);
+
+export async function getTimelineRecordings(params: {
+  testName?: string; test_name?: string; participants: string[];
+}): Promise<TLRec[]> {
+  const raw = await invoke("get_timeline_recordings", {
+    test_name: pickTestName(params),
+    participants: params.participants,
+  });
   return z.array(TLRecSchema).parse(raw);
 }
+
 export async function getGazeData(params: {
-  testName: string; participants: string[]; timeline?: string | null; recording?: string | null
+  testName?: string; test_name?: string;
+  participants: string[];
+  timeline?: string | null;
+  recording?: string | null;
+  limit?: number | null;
+  offset?: number | null;
 }): Promise<GazeData[]> {
-  const raw = await invoke<GazeData[]>("get_gaze_data", params).catch(() => []);
+  const raw = await invoke("get_gaze_data", {
+    test_name: pickTestName(params),
+    participants: params.participants,
+    timeline: params.timeline ?? null,
+    recording: params.recording ?? null,
+    limit: params.limit ?? null,
+    offset: params.offset ?? null,
+  });
   return z.array(GazeSchema).parse(raw);
 }
+
 export async function getBoxStats(params: {
-  testName: string; participants: string[]; timeline?: string | null; recording?: string | null
+  testName?: string; test_name?: string;
+  participants: string[];
+  timeline?: string | null;
+  recording?: string | null;
 }): Promise<{ box_percentages: Record<string, number> }> {
-  const raw = await invoke<{ box_percentages: Record<string, number> }>("get_box_stats", params).catch(() => ({ box_percentages: {} }));
-  return z.object({ box_percentages: z.record(z.number()) }).parse(raw);
+  const raw = await invoke("get_box_stats", {
+    test_name: pickTestName(params),
+    participants: params.participants,
+    timeline: params.timeline ?? null,
+    recording: params.recording ?? null,
+  });
+  return z.object({ box_percentages: z.record(z.string(), z.number()) }).parse(raw);
 }
-export async function getWordWindows(params: { testName: string; timeline?: string | null }): Promise<WordWindow[]> {
-  const raw = await invoke<WordWindow[]>("get_word_windows", params).catch(() => []);
-  return z.array(WordWindowSchema).parse(raw);
+
+export async function getWordWindows(_params: {
+  testName?: string; test_name?: string; timeline?: string | null;
+}): Promise<WordWindow[]> {
+  return [];
 }
-export async function getTestImage(params: { testName: string; timeline?: string | null }): Promise<string | null> {
-  const raw = await invoke<string | null>("get_test_image", params).catch(() => null);
-  return raw;
+
+export async function getTestImage(params: {
+  testName?: string; test_name?: string; timeline?: string | null;
+}): Promise<string | null> {
+  const raw = await invoke("get_test_image", {
+    test_name: pickTestName(params),
+    timeline: params.timeline ?? null,
+  });
+  return raw as string | null;
 }
