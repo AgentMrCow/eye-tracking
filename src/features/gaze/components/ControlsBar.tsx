@@ -32,33 +32,63 @@ export default function ControlsBar(p: Props) {
     <div class="flex flex-wrap items-end gap-3">
 
       {/* filters */}
-      <Select value={p.truthF} onChange={p.setTruthF} options={["all", ...p.truths]}
-        itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}>
-        <SelectTrigger class="w-28"><SelectValue>{p.truthF === "all" ? "all truth values" : p.truthF}</SelectValue></SelectTrigger>
+      <Select
+        value={p.truthF}
+        onChange={(v) => p.setTruthF(v ?? "all")}
+        options={["all", ...p.truths]}
+        itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}
+      >
+        <SelectTrigger class="w-28">
+          <SelectValue>{p.truthF === "all" ? "all truth values" : p.truthF}</SelectValue>
+        </SelectTrigger>
         <SelectContent />
       </Select>
 
-      <Select value={p.morphF} onChange={p.setMorphemeF} options={["all", ...p.morphs]}
-        itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}>
-        <SelectTrigger class="w-28"><SelectValue>{p.morphF === "all" ? "all morphemes" : p.morphF}</SelectValue></SelectTrigger>
+      <Select
+        value={p.morphF}
+        onChange={(v) => p.setMorphemeF(v ?? "all")}
+        options={["all", ...p.morphs]}
+        itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}
+      >
+        <SelectTrigger class="w-28">
+          <SelectValue>{p.morphF === "all" ? "all morphemes" : p.morphF}</SelectValue>
+        </SelectTrigger>
         <SelectContent />
       </Select>
 
-      <Select value={p.posF} onChange={p.setPosF} options={["all", ...p.poss]}
-        itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}>
-        <SelectTrigger class="w-28"><SelectValue>{p.posF === "all" ? "all positions" : p.posF}</SelectValue></SelectTrigger>
+      <Select
+        value={p.posF}
+        onChange={(v) => p.setPosF(v ?? "all")}
+        options={["all", ...p.poss]}
+        itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}
+      >
+        <SelectTrigger class="w-28">
+          <SelectValue>{p.posF === "all" ? "all positions" : p.posF}</SelectValue>
+        </SelectTrigger>
         <SelectContent />
       </Select>
 
-      <Select value={p.seriesF} onChange={p.setSeriesF} options={["all", ...p.series]}
-        itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}>
-        <SelectTrigger class="w-28"><SelectValue>{p.seriesF === "all" ? "all series" : p.seriesF}</SelectValue></SelectTrigger>
+      <Select
+        value={p.seriesF}
+        onChange={(v) => p.setSeriesF(v ?? "all")}
+        options={["all", ...p.series]}
+        itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}
+      >
+        <SelectTrigger class="w-28">
+          <SelectValue>{p.seriesF === "all" ? "all series" : p.seriesF}</SelectValue>
+        </SelectTrigger>
         <SelectContent />
       </Select>
 
-      <Select value={p.groupF} onChange={p.setGroupF} options={["all", ...p.groups]}
-        itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}>
-        <SelectTrigger class="w-28"><SelectValue>{p.groupF === "all" ? "all groups" : p.groupF}</SelectValue></SelectTrigger>
+      <Select
+        value={p.groupF}
+        onChange={(v) => p.setGroupF(v ?? "all")}
+        options={["all", ...p.groups]}
+        itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}
+      >
+        <SelectTrigger class="w-28">
+          <SelectValue>{p.groupF === "all" ? "all groups" : p.groupF}</SelectValue>
+        </SelectTrigger>
         <SelectContent />
       </Select>
 

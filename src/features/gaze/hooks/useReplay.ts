@@ -19,11 +19,24 @@ export function useReplay(params: () => {
   const replayPoints = createMemo(() => {
     const g = params().gaze;
     const base = params().baseMs;
+
+    // Build the points (still filtering for drawing)
     const pts = g
       .filter(d => d.gaze_x !== null && d.gaze_y !== null && d.box_name !== "missing" && d.box_name !== "out_of_screen")
       .map(d => ({ t: (+new Date(d.timestamp) - base) / 1000, x: d.gaze_x!, y: d.gaze_y! }));
-    if (pts.length) { setDuration(pts[pts.length - 1].t); setCurTime(0); setReady(true); }
-    else { setReady(false); }
+
+    // Compute duration from the *full* time range, not just the filtered list
+    if (g.length) {
+      const first = +new Date(g[0].timestamp);
+      const last  = +new Date(g[g.length - 1].timestamp);
+      setDuration(Math.max(0, (last - first) / 1000));
+      setCurTime(0);
+      setReady(true);
+    } else {
+      setReady(false);
+      setDuration(0);
+    }
+
     return pts;
   });
 

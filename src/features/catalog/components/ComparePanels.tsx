@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart } from "@/components/ui/charts";
 import type { BoxTypes, TimelineRecording, WordWindow } from "../types";
 import { getTestImage, getTimelineRecordings, getWordWindows } from "../services/catalogApi";
-import { Chart as ChartJS } from "chart.js";
+import { Chart as ChartJS, type ChartOptions } from "chart.js";
 import { timeColor } from "../utils";
 
 type Props = {
@@ -25,20 +25,30 @@ type Props = {
 const RevealClipPlugin = {
   id: "revealClip",
   beforeDatasetsDraw(chart: any, _args: any, pluginOpts: any) {
-    const { ctx, chartArea, scales } = chart; if (!chartArea) return;
-    const x = scales.x; const play: number = pluginOpts?.playSec ?? 0;
-    const clipX = Math.max(chartArea.left, Math.min(x.getPixelForValue(play), chartArea.right));
-    ctx.save(); ctx.beginPath(); ctx.rect(chartArea.left, chartArea.top, clipX - chartArea.left, chartArea.bottom - chartArea.top); ctx.clip();
+    if (!pluginOpts) return;
+    const { ctx, chartArea, scales } = chart;
+    const x = scales?.x;
+    if (!chartArea || !x || typeof x.getPixelForValue !== "function") return;
+
+    const play = Number.isFinite(pluginOpts.playSec) ? Number(pluginOpts.playSec) : 0;
+    const px = x.getPixelForValue(play);
+    if (!Number.isFinite(px)) return; // <<< IMPORTANT
+
+    const clipX = Math.max(chartArea.left, Math.min(px, chartArea.right));
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(chartArea.left, chartArea.top, clipX - chartArea.left, chartArea.bottom - chartArea.top);
+    ctx.clip();
   },
   afterDatasetsDraw(chart: any) { try { chart.ctx.restore(); } catch {} },
-};
+} as const;
+
 
 try { ChartJS.register(RevealClipPlugin as any); } catch {}
 
 export default function ComparePanels(p: Props) {
   const [binMs, setBinMs] = createSignal(100);
   const [viewSec, setViewSec] = createSignal(15);
-  const DUR_PRESETS = [5, 10, 15, 30, 60, 120];
 
   const [selTest1, setSelTest1] = createSignal<string>("");
   const [selPart1, setSelPart1] = createSignal<string>("");
@@ -134,7 +144,7 @@ export default function ComparePanels(p: Props) {
   });
 
   // charts + progressive reveal
-  const compareOpts = () => ({
+  const compareOpts = (): ChartOptions => ({
     responsive: true, maintainAspectRatio: false,
     scales: { x: { type: "linear", min: 0, max: viewSec(), ticks: { maxTicksLimit: 10 } }, y: { beginAtZero: true, max: 100 } },
     plugins: {
@@ -142,9 +152,11 @@ export default function ComparePanels(p: Props) {
         labels: { usePointStyle: true, boxWidth: 8, font: { size: 10 }, filter: (l: any, d: any) => !(d.datasets?.[l.datasetIndex]?._ph) } },
       tooltip: { mode: "index", intersect: false, filter: (c: any) => !(c.dataset?._ph),
         callbacks: { label: (c: any) => `${c.dataset.label}: ${c.parsed.y.toFixed(1)}%` } },
+      // @ts-expect-error custom plugin not in type registry
       revealClip: { playSec: p.playSec() },
     },
-    animation: false,
+    // Use object form to satisfy Chart.js typings.
+    animation: { duration: 0 },
   });
 
   const withPlayhead = (datasets: any[]) => [
@@ -171,17 +183,20 @@ export default function ComparePanels(p: Props) {
   const imgUrl1 = () => img1B64() ? `data:image/png;base64,${img1B64()}` : null;
   const imgUrl2 = () => img2B64() ? `data:image/png;base64,${img2B64()}` : null;
 
+  // Minimal local type for gaze points used here
+  type GD = { gaze_x: number | null; gaze_y: number | null; box_name: string; timestamp: string };
+
   const leftGaze  = () => series1()?.gaze ?? [];
   const leftBase  = () => series1()?.baseMs ?? 0;
   const rightGaze = () => series2()?.gaze ?? [];
   const rightBase = () => series2()?.baseMs ?? 0;
 
   const replayPts1 = () => leftGaze()
-    .filter(g => g.gaze_x !== null && g.gaze_y !== null && g.box_name !== "missing" && g.box_name !== "out_of_screen")
-    .map(g => ({ t: (+new Date(g.timestamp) - leftBase()) / 1000, x: g.gaze_x as number, y: g.gaze_y as number }));
+    .filter((g: GD) => g.gaze_x !== null && g.gaze_y !== null && g.box_name !== "missing" && g.box_name !== "out_of_screen")
+    .map((g: GD) => ({ t: (+new Date(g.timestamp) - leftBase()) / 1000, x: g.gaze_x as number, y: g.gaze_y as number }));
   const replayPts2 = () => rightGaze()
-    .filter(g => g.gaze_x !== null && g.gaze_y !== null && g.box_name !== "missing" && g.box_name !== "out_of_screen")
-    .map(g => ({ t: (+new Date(g.timestamp) - rightBase()) / 1000, x: g.gaze_x as number, y: g.gaze_y as number }));
+    .filter((g: GD) => g.gaze_x !== null && g.gaze_y !== null && g.box_name !== "missing" && g.box_name !== "out_of_screen")
+    .map((g: GD) => ({ t: (+new Date(g.timestamp) - rightBase()) / 1000, x: g.gaze_x as number, y: g.gaze_y as number }));
 
   let canvas1El: HTMLCanvasElement | null = null;
   let canvas2El: HTMLCanvasElement | null = null;
@@ -227,11 +242,11 @@ export default function ComparePanels(p: Props) {
 
           <div class="flex items-center gap-1 text-xs">
             <span class="text-muted-foreground pr-1">Presets:</span>
-            { [5,10,15,30,60,120].map(s => (
+            {[5, 10, 15, 30, 60, 120].map((s) => (
               <Button size="sm" variant={viewSec() === s ? "default" : "outline"} onClick={() => setViewSec(s)}>
                 {s}s
               </Button>
-            )) }
+            ))}
           </div>
 
           <div class="flex items-center gap-2 ml-auto">
@@ -283,7 +298,7 @@ export default function ComparePanels(p: Props) {
             }>
               <div class="h-[360px] rounded border">
                 <Show when={viz1().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
-                  <LineChart data={viz1()} options={compareOpts()} />
+                  <LineChart data={viz1()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
                 </Show>
               </div>
             </Show>
@@ -337,7 +352,7 @@ export default function ComparePanels(p: Props) {
             }>
               <div class="h-[360px] rounded border">
                 <Show when={viz2().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
-                  <LineChart data={viz2()} options={compareOpts()} />
+                  <LineChart data={viz2()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
                 </Show>
               </div>
             </Show>
@@ -383,7 +398,7 @@ function StimulusPane(props: { imgUrl: string | null; currentWord: string | null
               }
               props.onImg(img, cvs);
             }}
-            class="max-h-[240px] max-w-full object-contain rounded-md border"
+            class="max-h[240px] max-w-full object-contain rounded-md border"
           />
           <canvas class="absolute inset-0 pointer-events-none" />
         </div>

@@ -5,7 +5,8 @@ export function parseAoiList(s?: string | null): Set<BoxTypes> {
   const out = new Set<BoxTypes>();
   if (!s) return out;
   s
-    .replace(/[，；]/g, ",")
+    .replace(/\u3000/g, " ")               // full-width space → space
+    .replace(/[，；]/g, ",")                // Chinese comma/semicolon → comma
     .split(/[,\s]+/)
     .map((x) => x.trim())
     .filter(Boolean)

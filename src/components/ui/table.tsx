@@ -63,8 +63,14 @@ const TableCell: Component<ComponentProps<"td">> = (props) => {
 }
 
 const TableCaption: Component<ComponentProps<"caption">> = (props) => {
-  const [local, others] = splitProps(props, ["class"])
-  return <caption class={cn("mt-4 text-sm text-muted-foreground", local.class)} {...others} />
-}
+  const [local, others] = splitProps(props, ["class", "children"]);
+  // Only render <caption> when we actually have content
+  if (!local.children) return null;
+  return (
+    <caption class={cn("mt-4 text-sm text-muted-foreground", local.class)} {...others}>
+      {local.children}
+    </caption>
+  );
+};
 
 export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption }

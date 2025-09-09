@@ -89,7 +89,24 @@ const BaseChart: Component<ChartProps> = (rawProps) => {
     setChart(chart)
   }
 
-  onMount(() => init())
+  onMount(() => {
+    init();
+
+    const refresh = () => chart()?.resize();
+    const revive  = () => chart()?.update();
+
+    window.addEventListener("resize", refresh);
+    document.addEventListener("visibilitychange", revive);
+    window.addEventListener("blur", revive);
+    window.addEventListener("focus", revive);
+
+    onCleanup(() => {
+      window.removeEventListener("resize", refresh);
+      document.removeEventListener("visibilitychange", revive);
+      window.removeEventListener("blur", revive);
+      window.removeEventListener("focus", revive);
+    });
+  });
 
   createEffect(
     on(
@@ -207,6 +224,7 @@ function createTypedChart(
   const options: ChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    resizeDelay: 0,
     scales: chartsWithScales.includes(type)
       ? {
           x: {
