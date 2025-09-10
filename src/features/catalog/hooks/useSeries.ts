@@ -2,7 +2,7 @@ import { createEffect, createSignal } from "solid-js";
 import type { BoxTypes, GazeData } from "../types";
 import { getGazeData } from "../services/catalogApi";
 
-type Out = { datasets: any[]; xMax: number; gaze: GazeData[]; baseMs: number };
+type Out = { datasets: any[]; xMax: number; xMaxBinned: number; gaze: GazeData[]; baseMs: number };
 
 export function useSeries(params: () => {
   testName: string | null;
@@ -31,7 +31,7 @@ export function useSeries(params: () => {
       recording: p.recording ?? null,
     });
 
-    if (!gaze.length) { setSeries({ datasets: [], xMax: 0, gaze: [], baseMs: 0 }); return; }
+    if (!gaze.length) { setSeries({ datasets: [], xMax: 0, xMaxBinned: 0, gaze: [], baseMs: 0 }); return; }
 
     const baseMs = +new Date(gaze[0].timestamp);
     const ms = Math.max(1, p.binMs);
@@ -72,6 +72,7 @@ export function useSeries(params: () => {
       pointsRed.push ({ x, y: yR });
       pointsValid.push({ x, y: yV });
     }
+    const lastBinSec = sortedKeys.length ? (sortedKeys[sortedKeys.length - 1] / 1000) : 0;
 
     const datasets = [
       { label: "% Blue",  data: pointsBlue,  borderColor: "#2563eb", backgroundColor: "transparent", borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
@@ -79,7 +80,7 @@ export function useSeries(params: () => {
       { label: "% Valid", data: pointsValid, borderColor: "#64748b", backgroundColor: "transparent", borderDash: [4,4], borderWidth: 1.5, pointRadius: 0, tension: 0.2 },
     ];
 
-    setSeries({ datasets, xMax: lastSec, gaze, baseMs });
+    setSeries({ datasets, xMax: lastSec, xMaxBinned: lastBinSec, gaze, baseMs });
   });
 
   return series;

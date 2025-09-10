@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { Show, onCleanup, onMount } from "solid-js";
 import { Button } from "@/components/ui/button";
 
 type Props = {
@@ -10,6 +10,42 @@ type Props = {
 };
 
 export default function StimulusReplay(p: Props) {
+  let lastImg: HTMLImageElement | null = null;
+  let lastCanvas: HTMLCanvasElement | null = null;
+
+  function ensureCanvas(parent: HTMLElement): HTMLCanvasElement {
+    let cvs = parent.querySelector("canvas") as HTMLCanvasElement | null;
+    if (!cvs) {
+      cvs = document.createElement("canvas");
+      cvs.className = "absolute inset-0 pointer-events-none";
+      parent.appendChild(cvs);
+    }
+    return cvs;
+  }
+
+  function sizeAndNotify(img: HTMLImageElement) {
+    const parent = img.parentElement!;
+    const cvs = ensureCanvas(parent);
+    // set canvas pixel size to displayed image size
+    cvs.width = img.clientWidth;
+    cvs.height = img.clientHeight;
+    lastImg = img; lastCanvas = cvs;
+    p.onReadyImage(img, cvs);
+  }
+
+  function handleResize() {
+    if (lastImg && lastCanvas) {
+      lastCanvas.width = lastImg.clientWidth;
+      lastCanvas.height = lastImg.clientHeight;
+      p.onReadyImage(lastImg, lastCanvas);
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener("resize", handleResize);
+  });
+  onCleanup(() => window.removeEventListener("resize", handleResize));
+
   return (
     <div class="flex flex-col items-center gap-3">
       <Show when={p.imgUrl} fallback={<span class="text-sm text-muted-foreground">(no image for this test)</span>}>
@@ -18,23 +54,12 @@ export default function StimulusReplay(p: Props) {
             src={p.imgUrl!}
             alt="stimulus"
             ref={(img) => {
-              // ensure a canvas sibling exists and pass both back
-              const parent = img.parentElement!;
-              let cvs = parent.querySelector("canvas") as HTMLCanvasElement | null;
-              if (!cvs) {
-                cvs = document.createElement("canvas");
-                cvs.className = "absolute inset-0 pointer-events-none";
-                parent.appendChild(cvs);
-              }
-              // size canvas after image renders
-              queueMicrotask(() => {
-                cvs!.width = img.clientWidth; cvs!.height = img.clientHeight;
-                p.onReadyImage(img, cvs!);
-              });
+              // ensure a canvas sibling exists immediately
+              ensureCanvas(img.parentElement!);
             }}
+            onLoad={(e) => sizeAndNotify(e.currentTarget as HTMLImageElement)}
             class="max-h-[400px] max-w-full object-contain rounded-md border"
           />
-          <canvas class="absolute inset-0 pointer-events-none" />
         </div>
 
         {/* controls */}

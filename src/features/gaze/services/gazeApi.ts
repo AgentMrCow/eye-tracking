@@ -11,6 +11,7 @@ import {
   getBoxStatsRaw,
   getTestImageRaw,
 } from "@/shared/tauriClient";
+import { getParticipantsForTestRaw, getTestsForParticipantRaw } from "@/shared/tauriClient";
 
 /* Schemas specific to gaze */
 const GazeSchema: z.ZodType<GazeData> = z
@@ -202,4 +203,14 @@ export async function getTestImage(params: {
 }): Promise<string | null> {
   const raw = await getTestImageRaw(params);
   return raw as string | null;
+}
+
+export async function getParticipantsForTest(testName: string): Promise<string[]> {
+  const raw = await getParticipantsForTestRaw({ testName });
+  return z.array(z.string()).parse(raw);
+}
+
+export async function getTestsForParticipant(participant: string): Promise<string[]> {
+  const raw = await getTestsForParticipantRaw({ participant });
+  return z.array(z.string()).parse(raw);
 }

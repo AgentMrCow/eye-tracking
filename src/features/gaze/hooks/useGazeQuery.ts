@@ -4,8 +4,9 @@ import type {
 } from "../types";
 import {
   getAllCatalog, getAllRecordings, getAllTestMeta, getAoiMap, getBoxStats, getGazeData,
-  getParticipants, getTestImage, getTestNames, getTimelineRecordings, getWordWindows
+  getParticipants, getTestImage, getTestNames, getTimelineRecordings, getWordWindows,
 } from "../services/gazeApi";
+import { getStatic } from "@/shared/tauriClient";
 import { DEFAULT_COLORS } from "../constants";
 import { calcWholeStats, parseAOISet, parsePercent } from "../utils";
 
@@ -26,6 +27,11 @@ export function useGazeQuery() {
   /* lists */
   const [tests, setTests] = createSignal<SelectOption[]>([]);
   const [participants, setParticipants] = createSignal<SelectOption[]>([]);
+  // constrained options by current selections
+  const [testsForParticipant, setTestsForParticipant] = createSignal<string[] | null>(null);
+  const [partsForTest, setPartsForTest] = createSignal<string[] | null>(null);
+  const [mapTestsForPart, setMapTestsForPart] = createSignal<Record<string, string[]>>({});
+  const [mapPartsForTest, setMapPartsForTest] = createSignal<Record<string, string[]>>({});
 
   /* meta & catalog */
   const [allMeta, setAllMeta] = createSignal<TestMeta[]>([]);
@@ -34,7 +40,15 @@ export function useGazeQuery() {
   const [poss, setPoss] = createSignal<string[]>([]);
   const [series, setSeries] = createSignal<string[]>([]);
   const [catalog, setCatalog] = createSignal<CatalogRow[]>([]);
-  const catalogByTest = createMemo(() => new Map(catalog().map(r => [r.test_name, r])));
+  const catalogByTest = createMemo(() => {
+    const map = new Map<string, CatalogRow>();
+    for (const r of catalog()) {
+      if (!r || !r.test_name) continue;
+      map.set(r.test_name, r);
+      map.set(r.test_name.trim(), r);
+    }
+    return map;
+  });
   const [groups, setGroups] = createSignal<string[]>([]);
 
   /* filters */
@@ -51,19 +65,9 @@ export function useGazeQuery() {
     s.has(k) ? s.delete(k) : s.add(k);
     setActiveMetaFilters(s);
   }
+  function clearMetaFilters() { setActiveMetaFilters(new Set<MetaKey>()); }
 
-  /* AOI sets per selected test */
-  const metaBoxSets = createMemo(() => {
-    const row = selectedTest() ? catalogByTest().get(selectedTest()!.value) : undefined;
-    return {
-      correct_AOIs:             new Set(parseAOISet(row?.correct_AOIs)),
-      potentially_correct_AOIs: new Set(parseAOISet(row?.potentially_correct_AOIs)),
-      incorrect_AOIs:           new Set(parseAOISet(row?.incorrect_AOIs)),
-      correct_NULL:             new Set(parseAOISet(row?.correct_NULL)),
-      potentially_correct_NULL: new Set(parseAOISet(row?.potentially_correct_NULL)),
-      incorrect_NULL:           new Set(parseAOISet(row?.incorrect_NULL)),
-    };
-  });
+  /* AOI sets per selected test (defined later after gaze() to avoid init order issues) */
 
   const selectedBoxes = createMemo<Set<string>>(() => {
     const row = selectedTest() ? catalogByTest().get(selectedTest()!.value) : undefined;
@@ -111,11 +115,35 @@ export function useGazeQuery() {
   const [pxPerSec, setPxPerSec] = createSignal(40);
   const [spanSec, setSpanSec] = createSignal(15);
   const [viewSec, setViewSec] = createSignal(15);
+  // auto-sync view width to binned data span unless user overrides
+  const [autoSyncView, setAutoSyncView] = createSignal(true);
+
+  /* durations */
+  const rawDurationSec = createMemo(() => {
+    const g = gaze();
+    if (!g.length) return 0;
+    const first = +new Date(g[0].timestamp);
+    const last = +new Date(g[g.length - 1].timestamp);
+    return Math.max(0, (last - first) / 1000);
+  });
+  const binnedDurationSec = createMemo(() => {
+    const b = baseMs();
+    const r = rows();
+    if (!r.length || !b) return 0;
+    const last = +new Date(r[r.length - 1].timestamp);
+    return Math.max(0, (last - b) / 1000);
+  });
 
   /* lists bootstrap */
   createEffect(async () => {
     setTests((await getTestNames()).map(t => ({ label: t, value: t })));
     setParticipants((await getParticipants()).map(p => ({ label: p, value: p })));
+    // preload static maps to avoid async races during selection changes
+    const s = await getStatic().catch(() => null as any);
+    if (s) {
+      setMapTestsForPart((s.tests_by_participant as Record<string, string[]>) || {});
+      setMapPartsForTest((s.participants_by_test as Record<string, string[]>) || {});
+    }
     const meta = await getAllTestMeta();
     setAllMeta(meta);
     setTruths(Array.from(new Set(meta.map(m => m.truth_value).filter(Boolean))) as string[]);
@@ -144,6 +172,24 @@ export function useGazeQuery() {
       .filter(m => seriesF() === "all" || m.series === seriesF())
       .filter(m => groupF() === "all" ? true : byName.get(m.test_name)?.group === groupF())
       .map(m => m.test_name);
+  });
+
+  // further constrain tests by selected participant (only tests they actually did)
+  const filteredTestsByPart = createMemo(() => {
+    const base = filteredTests();
+    const tp = testsForParticipant();
+    if (!tp) return base;
+    const tpSet = new Set(tp.map(t => t?.trim?.() ?? t));
+    return base.filter(t => tpSet.has((t?.trim?.() ?? t)));
+  });
+
+  // participants constrained by selected test as a list (for internal guards)
+  const participantsFilteredList = createMemo(() => {
+    const base = participants().map(o => o.value);
+    const parts = partsForTest();
+    if (!parts) return base;
+    const pset = new Set(parts.map(p => p?.trim?.() ?? p));
+    return base.filter(v => pset.has((v?.trim?.() ?? v)));
   });
 
   /* AOI color overrides */
@@ -264,6 +310,64 @@ export function useGazeQuery() {
     }).sort((a, b) => +new Date(a.timestamp) - +new Date(b.timestamp));
     setRows(r);
   });
+  // participants allowed by selected test (sync from static map) — no auto-clears
+  createEffect(() => {
+    const t = selectedTest()?.value ?? null;
+    if (!t) { setPartsForTest(null); return; }
+    const parts = mapPartsForTest()[t] || [];
+    setPartsForTest(parts);
+  });
+  // tests allowed by selected participant (sync from static map) — no auto-clears
+  createEffect(() => {
+    const p = selectedPart()?.value ?? null;
+    if (!p) { setTestsForParticipant(null); return; }
+    const tests = mapTestsForPart()[p] || [];
+    setTestsForParticipant(tests);
+  });
+
+  /* auto-sync current view width to binned duration unless user changed it */
+  createEffect(() => {
+    if (!autoSyncView()) return;
+    const dur = binnedDurationSec();
+    if (dur > 0) {
+      // round to milliseconds precision to reflect binning
+      const next = Math.max(1, Math.round(dur * 1000) / 1000);
+      setViewSec(next);
+    }
+  });
+
+  /* AOI sets per selected test (robust to name drift; falls back to gaze test_name) */
+  const metaBoxSets = createMemo(() => {
+    const map = catalogByTest();
+    const tSel = selectedTest()?.value?.trim();
+    let row = tSel ? map.get(tSel) : undefined;
+    if (!row && gaze().length) {
+      const tG = (gaze()[0] as any).test_name?.toString()?.trim();
+      if (tG) row = map.get(tG);
+    }
+    return {
+      correct_AOIs:             new Set(parseAOISet(row?.correct_AOIs)),
+      potentially_correct_AOIs: new Set(parseAOISet(row?.potentially_correct_AOIs)),
+      incorrect_AOIs:           new Set(parseAOISet(row?.incorrect_AOIs)),
+      correct_NULL:             new Set(parseAOISet(row?.correct_NULL)),
+      potentially_correct_NULL: new Set(parseAOISet(row?.potentially_correct_NULL)),
+      incorrect_NULL:           new Set(parseAOISet(row?.incorrect_NULL)),
+    };
+  });
+
+  // Guard: if current selections become invalid due to filter changes, clear them (prevents hangs)
+  createEffect(() => {
+    const list = filteredTestsByPart();
+    const set = new Set(list.map(t => t?.trim?.() ?? t));
+    const sel = selectedTest()?.value;
+    if (sel && !set.has((sel?.trim?.() ?? sel))) setSelectedTest(null);
+  });
+  createEffect(() => {
+    const list = participantsFilteredList();
+    const set = new Set(list.map(p => p?.trim?.() ?? p));
+    const sel = selectedPart()?.value;
+    if (sel && !set.has((sel?.trim?.() ?? sel))) setSelectedPart(null);
+  });
 
   /* resets */
   function reset() {
@@ -271,7 +375,21 @@ export function useGazeQuery() {
     setPxPerSec(40);
     setSpanSec(15);
     setViewSec(15);
+    setAutoSyncView(true);
     setMinValidPct(0);
+  }
+
+  function clearSelections() {
+    setSelectedTimeline(null);
+    setSelectedRecording(null);
+    setSelectedPart(null);
+    setSelectedTest(null);
+    // reset filters to avoid empty option hangs
+    setTruthF("all");
+    setMorphemeF("all");
+    setPosF("all");
+    setSeriesF("all");
+    setGroupF("all");
   }
 
   return {
@@ -280,7 +398,7 @@ export function useGazeQuery() {
     truths, morphs, poss, series, groups,
     // filters
     truthF, setTruthF, morphF, setMorphemeF, posF, setPosF, seriesF, setSeriesF, groupF, setGroupF,
-    filteredTests,
+    filteredTests: filteredTestsByPart,
 
     // selections
     selectedTest, setSelectedTest, selectedPart, setSelectedPart,
@@ -296,8 +414,28 @@ export function useGazeQuery() {
 
     // rows & charting
     rows, baseMs, intervalMs, setIntervalMs, pxPerSec, setPxPerSec, spanSec, setSpanSec, viewSec, setViewSec,
+    rawDurationSec, binnedDurationSec,
+    // allow callers to disable auto-sync when the user adjusts the view
+    disableAutoView: () => setAutoSyncView(false),
+
+    // constrained options for UI
+    participantsFiltered: participantsFilteredList,
+
+    // expose catalog lookup for selected test (for AOI toggles)
+    catalogRowForSelectedTest: createMemo(() => {
+      const map = catalogByTest();
+      const t = selectedTest()?.value?.trim();
+      if (t) return map.get(t) ?? null;
+      if (gaze().length) {
+        const tG = (gaze()[0] as any).test_name?.toString()?.trim();
+        if (tG) return map.get(tG) ?? null;
+      }
+      return null as CatalogRow | null;
+    }),
 
     // helpers
     reset,
+    clearSelections,
+    clearMetaFilters,
   };
 }

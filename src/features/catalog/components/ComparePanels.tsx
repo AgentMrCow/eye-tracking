@@ -49,6 +49,7 @@ try { ChartJS.register(RevealClipPlugin as any); } catch {}
 export default function ComparePanels(p: Props) {
   const [binMs, setBinMs] = createSignal(100);
   const [viewSec, setViewSec] = createSignal(15);
+  const [autoSyncView, setAutoSyncView] = createSignal(true);
 
   const [selTest1, setSelTest1] = createSignal<string>("");
   const [selPart1, setSelPart1] = createSignal<string>("");
@@ -79,6 +80,14 @@ export default function ComparePanels(p: Props) {
     if (!t || !part) { setCombos2([]); setSelTimeline2(""); setSelRecording2(""); return; }
     const list = await getTimelineRecordings({ testName: t, participants: [part] });
     setCombos2(list);
+  });
+
+  // re-enable auto view sync on context changes (test/participant/timeline/recording)
+  createEffect(() => {
+    // consume signals to establish dependency
+    void selTest1(); void selPart1(); void selTimeline1(); void selRecording1();
+    void selTest2(); void selPart2(); void selTimeline2(); void selRecording2();
+    setAutoSyncView(true);
   });
 
   // keep current session valid
@@ -141,6 +150,12 @@ export default function ComparePanels(p: Props) {
     const d = Math.max(series1()?.xMax ?? 0, series2()?.xMax ?? 0);
     p.setDuration(d);
     if (p.playSec() > d) p.setPlaySec(d);
+    // auto-sync view width to the binned data span unless user overrode
+    const dBin = Math.max(series1()?.xMaxBinned ?? 0, series2()?.xMaxBinned ?? 0);
+    if (autoSyncView() && dBin > 0) {
+      const next = Math.max(1, Math.round(dBin * 1000) / 1000);
+      setViewSec(next);
+    }
   });
 
   // charts + progressive reveal
@@ -236,14 +251,14 @@ export default function ComparePanels(p: Props) {
           <label class="text-sm flex items-center gap-2">
             View width (s):
             <NumberField value={viewSec()} class="w-24">
-              <NumberFieldInput min={1} max={600} onInput={(e) => setViewSec(Math.max(1, +e.currentTarget.value || 1))} />
+              <NumberFieldInput min={1} max={600} onInput={(e) => { setAutoSyncView(false); setViewSec(Math.max(1, +e.currentTarget.value || 1)); }} />
             </NumberField>
           </label>
 
           <div class="flex items-center gap-1 text-xs">
             <span class="text-muted-foreground pr-1">Presets:</span>
             {[5, 10, 15, 30, 60, 120].map((s) => (
-              <Button size="sm" variant={viewSec() === s ? "default" : "outline"} onClick={() => setViewSec(s)}>
+              <Button size="sm" variant={viewSec() === s ? "default" : "outline"} onClick={() => { setAutoSyncView(false); setViewSec(s); }}>
                 {s}s
               </Button>
             ))}

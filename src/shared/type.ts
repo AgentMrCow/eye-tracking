@@ -6,6 +6,8 @@ export interface StaticData {
   recordings: RowMap[];
   participants: string[];
   test_names: string[];
+  participants_by_test?: Record<string, string[]>;
+  tests_by_participant?: Record<string, string[]>;
 }
 
 export interface GazeData {

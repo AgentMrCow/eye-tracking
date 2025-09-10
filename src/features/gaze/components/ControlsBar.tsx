@@ -25,6 +25,7 @@ type Props = {
 
   minValidPct: number; setMinValidPct: (n: number) => void;
   reset: () => void;
+  clearSelections: () => void;
 };
 
 export default function ControlsBar(p: Props) {
@@ -101,7 +102,7 @@ export default function ControlsBar(p: Props) {
         itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}
       >
         <SelectTrigger class="w-64">
-          <SelectValue>{p.selectedTest ?? "Select test…"}</SelectValue>
+          <SelectValue>{p.selectedTest ? p.selectedTest : "Select test…"}</SelectValue>
         </SelectTrigger>
         <SelectContent />
       </Select>
@@ -114,7 +115,7 @@ export default function ControlsBar(p: Props) {
         itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}
       >
         <SelectTrigger class="w-64">
-          <SelectValue>{p.selectedPart ?? "Select participant…"}</SelectValue>
+          <SelectValue>{p.selectedPart ? p.selectedPart : "Select participant…"}</SelectValue>
         </SelectTrigger>
         <SelectContent />
       </Select>
@@ -128,7 +129,7 @@ export default function ControlsBar(p: Props) {
           placeholder="Select timeline…"
           itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}
         >
-          <SelectTrigger class="w-48"><SelectValue>{p.selectedTimeline ?? "Select timeline…"}</SelectValue></SelectTrigger>
+          <SelectTrigger class="w-48"><SelectValue>{p.selectedTimeline ? p.selectedTimeline : "Select timeline…"}</SelectValue></SelectTrigger>
           <SelectContent />
         </Select>
       </Show>
@@ -141,7 +142,7 @@ export default function ControlsBar(p: Props) {
           placeholder="Select recording…"
           itemComponent={(i) => <SelectItem item={i.item}>{i.item.rawValue}</SelectItem>}
         >
-          <SelectTrigger class="w-48"><SelectValue>{p.selectedRecording ?? "Select recording…"}</SelectValue></SelectTrigger>
+          <SelectTrigger class="w-48"><SelectValue>{p.selectedRecording ? p.selectedRecording : "Select recording…"}</SelectValue></SelectTrigger>
           <SelectContent />
         </Select>
       </Show>
@@ -183,7 +184,10 @@ export default function ControlsBar(p: Props) {
         <span class="w-10 text-right tabular-nums">{p.minValidPct}%</span>
       </label>
 
-      <Button size="sm" variant="secondary" onClick={p.reset}>Reset</Button>
+      <div class="flex items-center gap-2 ml-auto">
+        <Button size="sm" variant="secondary" onClick={p.clearSelections}>Clear selections</Button>
+        <Button size="sm" variant="secondary" onClick={p.reset}>Reset</Button>
+      </div>
     </div>
   );
 }

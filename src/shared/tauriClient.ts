@@ -76,3 +76,11 @@ export async function getTestImageRaw(params: {
     timeline: params.timeline ?? null,
   });
 }
+
+export async function getParticipantsForTestRaw(params: { testName: string }): Promise<unknown> {
+  return invoke("get_participants_for_test", bothTestNames(params.testName));
+}
+
+export async function getTestsForParticipantRaw(params: { participant: string }): Promise<unknown> {
+  return invoke("get_tests_for_participant", { participant: params.participant });
+}

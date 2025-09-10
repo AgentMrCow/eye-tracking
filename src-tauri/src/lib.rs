@@ -4,7 +4,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{OpenFlags, OptionalExtension, Result as SqlResult};
 use rusqlite::types::Value as SqlValue;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -52,6 +52,8 @@ pub struct StaticData {
     pub recordings: Vec<RowMap>,
     pub participants: Vec<String>,
     pub test_names: Vec<String>,
+    pub participants_by_test: HashMap<String, Vec<String>>,
+    pub tests_by_participant: HashMap<String, Vec<String>>,
 }
 
 pub struct DbPool(Arc<Pool<SqliteConnectionManager>>);
@@ -158,7 +160,41 @@ async fn get_static_data(pool: State<'_, DbPool>) -> Result<StaticData, String> 
     // Test names from test_catalog
     let test_names = distinct_nonempty(&conn, "test_catalog", "test_name")?;
 
-    Ok(StaticData { test_catalog, test_group, recordings, participants, test_names })
+    // Build maps (test -> participants, participant -> tests) from gaze_data
+    let mut by_test: HashMap<String, BTreeSet<String>> = HashMap::new();
+    let mut by_part: HashMap<String, BTreeSet<String>> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                r#"SELECT DISTINCT "Test Name", "Participant name"
+                   FROM gaze_data
+                   WHERE "Test Name" IS NOT NULL AND TRIM("Test Name") <> ''
+                     AND "Participant name" IS NOT NULL AND TRIM("Participant name") <> ''"#,
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                let t: String = row.get(0)?;
+                let p: String = row.get(1)?;
+                Ok((t, p))
+            })
+            .map_err(|e| e.to_string())?;
+        for r in rows {
+            let (t, p) = r.map_err(|e| e.to_string())?;
+            by_test.entry(t.clone()).or_default().insert(p.clone());
+            by_part.entry(p).or_default().insert(t);
+        }
+    }
+    let participants_by_test: HashMap<String, Vec<String>> = by_test
+        .into_iter()
+        .map(|(k, v)| (k, v.into_iter().collect()))
+        .collect();
+    let tests_by_participant: HashMap<String, Vec<String>> = by_part
+        .into_iter()
+        .map(|(k, v)| (k, v.into_iter().collect()))
+        .collect();
+
+    Ok(StaticData { test_catalog, test_group, recordings, participants, test_names, participants_by_test, tests_by_participant })
 }
 
 /* 2) Heavy data: filtered gaze stream (with optional limit/offset)
@@ -333,6 +369,39 @@ async fn get_box_stats(
     Ok(GazeStats { box_percentages: box_counts, total_points })
 }
 
+/* 5) Lookup helpers for UI filtering */
+#[tauri::command]
+async fn get_participants_for_test(
+    test_name: Option<String>,
+    testName: Option<String>,
+    pool: State<'_, DbPool>,
+) -> Result<Vec<String>, String> {
+    let conn = pool.0.get().map_err(|e| e.to_string())?;
+    let test = test_name.or(testName).ok_or_else(|| "missing param: test_name/testName".to_string())?;
+    let mut stmt = conn
+        .prepare(r#"SELECT DISTINCT "Participant name" FROM gaze_data WHERE "Test Name"=?1 ORDER BY 1"#)
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([&test], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    Ok(rows.collect::<SqlResult<Vec<String>>>().map_err(|e| e.to_string())?)
+}
+
+#[tauri::command]
+async fn get_tests_for_participant(
+    participant: String,
+    pool: State<'_, DbPool>,
+) -> Result<Vec<String>, String> {
+    let conn = pool.0.get().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(r#"SELECT DISTINCT "Test Name" FROM gaze_data WHERE "Participant name"=?1 ORDER BY 1"#)
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([&participant], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    Ok(rows.collect::<SqlResult<Vec<String>>>().map_err(|e| e.to_string())?)
+}
+
 /* 5) On-demand image loader (base64) */
 #[tauri::command]
 async fn get_test_image(
@@ -482,6 +551,8 @@ pub fn run() {
             get_timeline_recordings,
             get_gaze_data,
             get_box_stats,
+            get_participants_for_test,
+            get_tests_for_participant,
             // assets
             get_test_image,
         ])
