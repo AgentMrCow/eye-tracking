@@ -348,7 +348,22 @@ export default function ComparePanels(p: Props) {
               </Button>
             ))}
           </div>
-
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSelTest1("");
+              setSelPart1("");
+              setSelTimeline1("");
+              setSelRecording1("");
+              setSelTest2("");
+              setSelPart2("");
+              setSelTimeline2("");
+              setSelRecording2("");
+            }}
+          >
+            Reset selections
+          </Button>
           <div class="flex items-center gap-2 ml-auto">
             <Button size="icon" onClick={p.isPlaying() ? p.pause : p.play} disabled={p.duration() <= 0}>
               {p.isPlaying() ? "❚❚" : "►"}
