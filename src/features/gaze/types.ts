@@ -14,14 +14,6 @@ export interface GazeData {
   recording?: string;
 }
 
-export interface WordWindow {
-  chinese_word: string;
-  start_sec: number;
-  end_sec: number;
-  test_name: string;
-  timeline: string;
-}
-
 export interface SelectOption { label: string; value: string; }
 
 export type TLRec = { timeline: string; recording: string };
@@ -54,3 +46,5 @@ export type TestMeta = {
 export type MetaKey =
   | "correct_AOIs" | "potentially_correct_AOIs" | "incorrect_AOIs"
   | "correct_NULL" | "potentially_correct_NULL" | "incorrect_NULL";
+
+export type { WordWindow } from "@/shared/type";

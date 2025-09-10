@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type {
-  CatalogRow, GazeData, RecordingRow, TestMeta, TLRec, WordWindow
+  CatalogRow,
+  GazeData,
+  RecordingRow,
+  TestMeta,
+  TLRec,
 } from "../types";
 import type { RowMap } from "@/shared/type";
 
@@ -9,9 +13,10 @@ import {
   getTimelineRecordingsRaw,
   getGazeDataRaw,
   getBoxStatsRaw,
-  getTestImageRaw,
 } from "@/shared/tauriClient";
 import { getParticipantsForTestRaw, getTestsForParticipantRaw } from "@/shared/tauriClient";
+import { rowMapTo, pick } from "@/shared/services/testData";
+export { getWordWindows, getTestImage } from "@/shared/services/testData";
 
 /* Schemas specific to gaze */
 const GazeSchema: z.ZodType<GazeData> = z
@@ -69,11 +74,6 @@ const RecordingRowSchema: z.ZodType<RecordingRow> = z
   })
   .catchall(z.any());
 
-
-function rowMapTo<T>(row: RowMap, schema: z.ZodType<T>): T {
-  return schema.parse(row as unknown as Record<string, unknown>);
-}
-
 /* Lists + static data */
 export async function getTestNames(): Promise<string[]> {
   const s = await getStatic();
@@ -92,17 +92,6 @@ export async function getAllTestMeta(): Promise<TestMeta[]> {
 export async function getAllCatalog(): Promise<CatalogRow[]> {
   const s = await getStatic();
   return (s.test_catalog ?? []).map((r) => rowMapTo(r, CatalogRowSchema));
-}
-
-function pick(row: RowMap, key: string): unknown {
-  const r = row as unknown as Record<string, unknown>;
-  return (
-    r[key] ??
-    r[key.replace(/_/g, " ")] ??
-    r[key.replace(/ /g, "_")] ??
-    r[key.toLowerCase()] ??
-    r[key.toUpperCase()]
-  );
 }
 
 export async function getAllRecordings(): Promise<RecordingRow[]> {
@@ -146,63 +135,6 @@ export async function getBoxStats(params: {
 }): Promise<{ box_percentages: Record<string, number> }> {
   const raw = await getBoxStatsRaw(params);
   return z.object({ box_percentages: z.record(z.string(), z.number()) }).parse(raw);
-}
-
-export async function getWordWindows(params: {
-  testName: string; timeline?: string | null;
-}): Promise<WordWindow[]> {
-  const s = await getStatic();
-  const rows = (s.test_catalog ?? []) as RowMap[];
-
-  // 1) rows for this test
-  const testRows = rows.filter(r => (pick(r, "test_name") ?? "") === params.testName);
-  if (!testRows.length) return [];
-
-  // 2) prefer exact timeline, else any row that has non-empty JSON
-  const row =
-    (params.timeline
-      ? testRows.find(r => (pick(r, "timeline") ?? "") === params.timeline)
-      : undefined) ??
-    testRows.find(r => (pick(r, "word_windows_json") ?? "").toString().trim().length) ??
-    testRows[0];
-
-  const wwJson = (pick(row, "word_windows_json") ?? "").toString().trim();
-  if (!wwJson) return [];
-
-  let arr: unknown;
-  try { arr = JSON.parse(wwJson); } catch { return []; }
-
-  // Accept either {w,start,end} or {chinese_word,start_sec,end_sec}
-  const zItem = z.object({
-    w: z.string().optional(),
-    chinese_word: z.string().optional(),
-    start: z.number().optional(),
-    start_sec: z.number().optional(),
-    end: z.number().optional(),
-    end_sec: z.number().optional(),
-  });
-  const parsed = z.array(zItem).safeParse(arr);
-  if (!parsed.success) return [];
-
-  const timeline = (pick(row, "timeline") ?? "") as string;
-
-  return parsed.data
-    .map(x => ({
-      chinese_word: x.chinese_word ?? x.w ?? "",
-      start_sec: (x.start_sec ?? x.start ?? NaN) as number,
-      end_sec: (x.end_sec ?? x.end ?? NaN) as number,
-      test_name: params.testName,
-      timeline,
-    }))
-    .filter(w => w.chinese_word && Number.isFinite(w.start_sec) && Number.isFinite(w.end_sec));
-}
-
-
-export async function getTestImage(params: {
-  testName: string; timeline?: string | null;
-}): Promise<string | null> {
-  const raw = await getTestImageRaw(params);
-  return raw as string | null;
 }
 
 export async function getParticipantsForTest(testName: string): Promise<string[]> {

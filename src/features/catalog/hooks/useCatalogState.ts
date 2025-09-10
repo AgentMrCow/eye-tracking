@@ -3,7 +3,7 @@ import type {
   AggMode, AoiKey, BoxTypes, CompareBy, DetailedRow, ParticipantSummary, TestCatalogRow
 } from "../types";
 import { ALL_AOI_KEYS, AOI_KEY_LABEL } from "../constants";
-import { boxesFor, labelForKey, median } from "../utils";
+import { boxesFor, labelForKey } from "../utils";
 import { getCatalog, getParticipants, getGazeData } from "../services/catalogApi";
 
 export function useCatalogState() {
@@ -12,12 +12,12 @@ export function useCatalogState() {
   const [participants, setParticipants] = createSignal<string[]>([]);
 
   /* filters */
-  const [groupF, setGroupF] = createSignal("all groups");
-  const [truthF, setTruthF] = createSignal("all truth values");
-  const [posF, setPosF] = createSignal("all positions");
-  const [morphF, setMorphF] = createSignal("all morphemes");
-  const [seriesF, setSeriesF] = createSignal("all series");
-  const [caseF, setCaseF] = createSignal("all cases");
+  const [groupF, setGroupF] = createSignal("all");
+  const [truthF, setTruthF] = createSignal("all");
+  const [posF, setPosF] = createSignal("all");
+  const [morphF, setMorphF] = createSignal("all");
+  const [seriesF, setSeriesF] = createSignal("all");
+  const [caseF, setCaseF] = createSignal("all");
 
   /* AOI keys */
   const [blueKeys, setBlueKeys] = createSignal<AoiKey[]>(["correct_AOIs"]);
@@ -50,26 +50,26 @@ export function useCatalogState() {
   });
 
   /* option lists */
-  const groups = createMemo(() => ["all groups", ...Array.from(new Set(catalog().map((r) => r.group || "").filter(Boolean)))]);
-  const truths = createMemo(() => ["all truth values", ...Array.from(new Set(catalog().map((r) => r.truth_value || "").filter(Boolean)))]);
-  const poss = createMemo(() => ["all positions", ...Array.from(new Set(catalog().map((r) => r.only_position || "").filter(Boolean)))]);
-  const morphs = createMemo(() => ["all morphemes", ...Array.from(new Set(catalog().map((r) => r.morpheme || "").filter(Boolean)))]);
-  const series = createMemo(() => ["all series", ...Array.from(new Set(catalog().map((r) => r.series || "").filter(Boolean)))]);
+  const groups = createMemo(() => Array.from(new Set(catalog().map((r) => r.group || "").filter(Boolean))));
+  const truths = createMemo(() => Array.from(new Set(catalog().map((r) => r.truth_value || "").filter(Boolean))));
+  const poss = createMemo(() => Array.from(new Set(catalog().map((r) => r.only_position || "").filter(Boolean))));
+  const morphs = createMemo(() => Array.from(new Set(catalog().map((r) => r.morpheme || "").filter(Boolean))));
+  const series = createMemo(() => Array.from(new Set(catalog().map((r) => r.series || "").filter(Boolean))));
   const cases = createMemo(() => {
     const cs = Array.from(new Set(catalog().map((r) => (r.case_no == null ? null : r.case_no))));
-    return ["all cases", ...cs.filter((x): x is number => x != null).map(String)];
+    return cs.filter((x): x is number => x != null).map(String);
   });
 
   /* filtered tests */
   const tests = createMemo(() =>
     catalog().filter(
       (r) =>
-        (groupF() === "all groups" || r.group === groupF()) &&
-        (truthF() === "all truth values" || r.truth_value === truthF()) &&
-        (posF() === "all positions" || r.only_position === posF()) &&
-        (morphF() === "all morphemes" || r.morpheme === morphF()) &&
-        (seriesF() === "all series" || r.series === seriesF()) &&
-        (caseF() === "all cases" || String(r.case_no ?? "") === caseF())
+        (groupF() === "all" || r.group === groupF()) &&
+        (truthF() === "all" || r.truth_value === truthF()) &&
+        (posF() === "all" || r.only_position === posF()) &&
+        (morphF() === "all" || r.morpheme === morphF()) &&
+        (seriesF() === "all" || r.series === seriesF()) &&
+        (caseF() === "all" || String(r.case_no ?? "") === caseF())
     )
   );
   const testNames = createMemo(() => Array.from(new Set(tests().map((t) => t.test_name))));
