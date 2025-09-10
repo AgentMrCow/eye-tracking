@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
 import { NumberField, NumberFieldInput } from "@/components/ui/number-field";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart } from "@/components/ui/charts";
 import type { BoxTypes, TimelineRecording, WordWindow } from "../types";
 import { getTestImage, getTimelineRecordings, getWordWindows } from "../services/catalogApi";
+import { getStatic } from "@/shared/tauriClient";
 import { Chart as ChartJS, type ChartOptions } from "chart.js";
 import { timeColor } from "../utils";
 
@@ -55,6 +56,75 @@ export default function ComparePanels(p: Props) {
   const [selPart1, setSelPart1] = createSignal<string>("");
   const [selTest2, setSelTest2] = createSignal<string>("");
   const [selPart2, setSelPart2] = createSignal<string>("");
+
+  const [mapTestsForPart, setMapTestsForPart] = createSignal<Record<string, string[]>>({});
+  const [mapPartsForTest, setMapPartsForTest] = createSignal<Record<string, string[]>>({});
+
+  onMount(async () => {
+    const s = await getStatic().catch(() => null as any);
+    if (s) {
+      setMapTestsForPart((s.tests_by_participant as Record<string, string[]>) || {});
+      setMapPartsForTest((s.participants_by_test as Record<string, string[]>) || {});
+    }
+  });
+
+  const testOpts1 = createMemo(() => {
+    const part = selPart1();
+    const base = p.testNames;
+    if (!part) return base;
+    const allowed = mapTestsForPart()[part] || [];
+    const set = new Set(allowed.map(v => v?.trim?.() ?? v));
+    return base.filter(t => set.has(t?.trim?.() ?? t));
+  });
+  const partOpts1 = createMemo(() => {
+    const test = selTest1();
+    const base = p.participants;
+    if (!test) return base;
+    const allowed = mapPartsForTest()[test] || [];
+    const set = new Set(allowed.map(v => v?.trim?.() ?? v));
+    return base.filter(x => set.has(x?.trim?.() ?? x));
+  });
+  const testOpts2 = createMemo(() => {
+    const part = selPart2();
+    const base = p.testNames;
+    if (!part) return base;
+    const allowed = mapTestsForPart()[part] || [];
+    const set = new Set(allowed.map(v => v?.trim?.() ?? v));
+    return base.filter(t => set.has(t?.trim?.() ?? t));
+  });
+  const partOpts2 = createMemo(() => {
+    const test = selTest2();
+    const base = p.participants;
+    if (!test) return base;
+    const allowed = mapPartsForTest()[test] || [];
+    const set = new Set(allowed.map(v => v?.trim?.() ?? v));
+    return base.filter(x => set.has(x?.trim?.() ?? x));
+  });
+
+  createEffect(() => {
+    const list = testOpts1();
+    const set = new Set(list.map(v => v?.trim?.() ?? v));
+    const sel = selTest1();
+    if (sel && !set.has(sel?.trim?.() ?? sel)) setSelTest1("");
+  });
+  createEffect(() => {
+    const list = partOpts1();
+    const set = new Set(list.map(v => v?.trim?.() ?? v));
+    const sel = selPart1();
+    if (sel && !set.has(sel?.trim?.() ?? sel)) setSelPart1("");
+  });
+  createEffect(() => {
+    const list = testOpts2();
+    const set = new Set(list.map(v => v?.trim?.() ?? v));
+    const sel = selTest2();
+    if (sel && !set.has(sel?.trim?.() ?? sel)) setSelTest2("");
+  });
+  createEffect(() => {
+    const list = partOpts2();
+    const set = new Set(list.map(v => v?.trim?.() ?? v));
+    const sel = selPart2();
+    if (sel && !set.has(sel?.trim?.() ?? sel)) setSelPart2("");
+  });
 
   const [combos1, setCombos1] = createSignal<TimelineRecording[]>([]);
   const timelines1 = createMemo(() => Array.from(new Set(combos1().map(c => c.timeline))));
@@ -293,13 +363,13 @@ export default function ComparePanels(p: Props) {
           <div class="space-y-3">
             <div class="flex flex-wrap items-center gap-2">
               <Select value={selTest1()} onChange={(v) => { setSelTest1(v || ""); setSelTimeline1(""); setSelRecording1(""); }}
-                      options={p.testNames} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
+                      options={testOpts1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selTest1() || "Select test…"}</SelectValue></SelectTrigger>
                 <SelectContent />
               </Select>
 
               <Select value={selPart1()} onChange={(v) => { setSelPart1(v || ""); setSelTimeline1(""); setSelRecording1(""); }}
-                      options={p.participants} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
+                      options={partOpts1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selPart1() || "Select participant…"}</SelectValue></SelectTrigger>
                 <SelectContent />
               </Select>
@@ -353,13 +423,13 @@ export default function ComparePanels(p: Props) {
           <div class="space-y-3">
             <div class="flex flex-wrap items-center gap-2">
               <Select value={selTest2()} onChange={(v) => { setSelTest2(v || ""); setSelTimeline2(""); setSelRecording2(""); }}
-                      options={p.testNames} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
+                      options={testOpts2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selTest2() || "Select test…"}</SelectValue></SelectTrigger>
                 <SelectContent />
               </Select>
 
               <Select value={selPart2()} onChange={(v) => { setSelPart2(v || ""); setSelTimeline2(""); setSelRecording2(""); }}
-                      options={p.participants} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
+                      options={partOpts2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selPart2() || "Select participant…"}</SelectValue></SelectTrigger>
                 <SelectContent />
               </Select>
