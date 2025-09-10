@@ -68,6 +68,11 @@ export default function ComparePanels(p: Props) {
   const recOpts2 = createMemo(() => combos2().filter(c => c.timeline === selTimeline2()).map(c => c.recording));
   const [selRecording2, setSelRecording2] = createSignal<string>("");
 
+  const needsChoice1 = createMemo(() => combos1().length > 1 && (!selTimeline1() || !selRecording1()));
+  const needsChoice2 = createMemo(() => combos2().length > 1 && (!selTimeline2() || !selRecording2()));
+  const hasSel1 = createMemo(() => !!selTest1() && !!selPart1());
+  const hasSel2 = createMemo(() => !!selTest2() && !!selPart2());
+
   // fetch sessions
   createEffect(async () => {
     const t = selTest1(), part = selPart1();
@@ -126,24 +131,30 @@ export default function ComparePanels(p: Props) {
   });
 
   // series
-  const series1 = p.useSeries(() => ({
-    testName: selTest1() || null,
-    participant: selPart1() || null,
-    binMs: binMs(),
-    invalidCats: p.invalidCats,
-    ...p.getSetsFor(selTest1() || "") ,
-    timeline: selTimeline1() || undefined,
-    recording: selRecording1() || undefined,
-  }));
-  const series2 = p.useSeries(() => ({
-    testName: selTest2() || null,
-    participant: selPart2() || null,
-    binMs: binMs(),
-    invalidCats: p.invalidCats,
-    ...p.getSetsFor(selTest2() || ""),
-    timeline: selTimeline2() || undefined,
-    recording: selRecording2() || undefined,
-  }));
+  const series1 = p.useSeries(() => {
+    const allow = hasSel1() && !needsChoice1();
+    return {
+      testName: allow ? selTest1() : null,
+      participant: allow ? selPart1() : null,
+      binMs: binMs(),
+      invalidCats: p.invalidCats,
+      ...p.getSetsFor(selTest1() || ""),
+      timeline: allow ? selTimeline1() || undefined : null,
+      recording: allow ? selRecording1() || undefined : null,
+    };
+  });
+  const series2 = p.useSeries(() => {
+    const allow = hasSel2() && !needsChoice2();
+    return {
+      testName: allow ? selTest2() : null,
+      participant: allow ? selPart2() : null,
+      binMs: binMs(),
+      invalidCats: p.invalidCats,
+      ...p.getSetsFor(selTest2() || ""),
+      timeline: allow ? selTimeline2() || undefined : null,
+      recording: allow ? selRecording2() || undefined : null,
+    };
+  });
 
   // duration sync
   createEffect(() => {
@@ -308,28 +319,34 @@ export default function ComparePanels(p: Props) {
               </Show>
             </div>
 
-            <Show when={combos1().length <= 1 || (selTimeline1() && selRecording1())} fallback={
-              <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Multiple sessions found. Pick <b>timeline</b> and <b>recording</b>.</div>
+            <Show when={hasSel1()} fallback={
+              <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Select <b>test</b> and <b>participant</b>.</div>
             }>
-              <div class="h-[360px] rounded border">
-                <Show when={viz1().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
-                  <LineChart data={viz1()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
-                </Show>
-              </div>
-            </Show>
+              <Show when={!needsChoice1()} fallback={
+                <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Multiple sessions found. Pick <b>timeline</b> and <b>recording</b>.</div>
+              }>
+                <>
+                  <div class="h-[360px] rounded border">
+                    <Show when={viz1().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
+                      <LineChart data={viz1()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
+                    </Show>
+                  </div>
 
-            {/* Stimulus + overlay */}
-            <StimulusPane
-              imgUrl={imgUrl1()}
-              currentWord={currentWord1()}
-              onImg={(img, cvs) => {
-                // wire refs
-                img1El = img; canvas1El = cvs;
-                if (!canvas1El || !img1El) return;
-                canvas1El.width = img1El.clientWidth; canvas1El.height = img1El.clientHeight;
-                drawFrameLeft(p.playSec());
-              }}
-            />
+                  {/* Stimulus + overlay */}
+                  <StimulusPane
+                    imgUrl={imgUrl1()}
+                    currentWord={currentWord1()}
+                    onImg={(img, cvs) => {
+                      // wire refs
+                      img1El = img; canvas1El = cvs;
+                      if (!canvas1El || !img1El) return;
+                      canvas1El.width = img1El.clientWidth; canvas1El.height = img1El.clientHeight;
+                      drawFrameLeft(p.playSec());
+                    }}
+                  />
+                </>
+              </Show>
+            </Show>
           </div>
 
           {/* Right */}
@@ -362,26 +379,32 @@ export default function ComparePanels(p: Props) {
               </Show>
             </div>
 
-            <Show when={combos2().length <= 1 || (selTimeline2() && selRecording2())} fallback={
-              <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Multiple sessions found. Pick <b>timeline</b> and <b>recording</b>.</div>
+            <Show when={hasSel2()} fallback={
+              <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Select <b>test</b> and <b>participant</b>.</div>
             }>
-              <div class="h-[360px] rounded border">
-                <Show when={viz2().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
-                  <LineChart data={viz2()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
-                </Show>
-              </div>
-            </Show>
+              <Show when={!needsChoice2()} fallback={
+                <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Multiple sessions found. Pick <b>timeline</b> and <b>recording</b>.</div>
+              }>
+                <>
+                  <div class="h-[360px] rounded border">
+                    <Show when={viz2().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
+                      <LineChart data={viz2()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
+                    </Show>
+                  </div>
 
-            <StimulusPane
-              imgUrl={imgUrl2()}
-              currentWord={currentWord2()}
-              onImg={(img, cvs) => {
-                img2El = img; canvas2El = cvs;
-                if (!canvas2El || !img2El) return;
-                canvas2El.width = img2El.clientWidth; canvas2El.height = img2El.clientHeight;
-                drawFrameRight(p.playSec());
-              }}
-            />
+                  <StimulusPane
+                    imgUrl={imgUrl2()}
+                    currentWord={currentWord2()}
+                    onImg={(img, cvs) => {
+                      img2El = img; canvas2El = cvs;
+                      if (!canvas2El || !img2El) return;
+                      canvas2El.width = img2El.clientWidth; canvas2El.height = img2El.clientHeight;
+                      drawFrameRight(p.playSec());
+                    }}
+                  />
+                </>
+              </Show>
+            </Show>
           </div>
         </div>
       </CardContent>
