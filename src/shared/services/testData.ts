@@ -3,16 +3,24 @@ import type { RowMap, WordWindow } from "@/shared/type";
 import { getStatic, getTestImageRaw } from "@/shared/tauriClient";
 
 export function rowMapTo<T>(row: RowMap, schema: z.ZodType<T>): T {
+  // If the schema is an object, only pass through keys present in the schema
   if (schema instanceof z.ZodObject) {
-    const shape = (schema as z.ZodObject<any>).shape;
+    // Depending on your Zod version, `shape` may be a getter or live under _def.
+    const shape: Record<string, unknown> =
+      (schema as any).shape ?? (schema as any)._def?.shape();
+
     const norm: Record<string, unknown> = {};
-    for (const key of Object.keys(shape)) {
-      norm[key] = pick(row, key);
+    for (const key of Object.keys(shape ?? {})) {
+      norm[key] = (row as Record<string, unknown>)[key];
     }
-    return (schema as z.ZodType<T>).parse(norm as unknown);
+
+    return (schema as z.ZodObject<any>).parse(norm) as T;
   }
+
+  // For primitives/unions/etc. just parse the row as-is
   return schema.parse(row as unknown as Record<string, unknown>);
 }
+
 
 export function pick(row: RowMap, key: string): unknown {
   const r = row as unknown as Record<string, unknown>;
