@@ -36,14 +36,6 @@ export type GazeData = {
   test_name: string;
 };
 
-export type WordWindow = {
-  chinese_word: string;
-  start_sec: number;
-  end_sec: number;
-  test_name: string;
-  timeline: string;
-};
-
 export type TimelineRecording = { timeline: string; recording: string };
 
 export type BoxTypes =
@@ -79,3 +71,5 @@ export type ParticipantSummary = {
   meanPct: number;
   weightedPct: number;
 };
+
+export type { WordWindow } from "@/shared/type";
