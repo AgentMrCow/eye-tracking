@@ -4,7 +4,7 @@ import { CircleHelp, Settings2 } from "lucide-solid";
 
 /* state + hooks */
 import { useCatalogState } from "../hooks/useCatalogState";
-import { usePlayback } from "../hooks/usePlayback";
+import { usePlayback } from "@/shared/hooks/usePlayback";
 import { useSeries } from "../hooks/useSeries";
 
 /* pieces */

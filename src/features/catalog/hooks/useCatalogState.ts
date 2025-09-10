@@ -3,7 +3,7 @@ import type {
   AggMode, AoiKey, BoxTypes, CompareBy, DetailedRow, ParticipantSummary, TestCatalogRow
 } from "../types";
 import { ALL_AOI_KEYS, AOI_KEY_LABEL } from "../constants";
-import { boxesFor, labelForKey, median } from "../utils";
+import { boxesFor, labelForKey } from "../utils";
 import { getCatalog, getParticipants, getGazeData } from "../services/catalogApi";
 
 export function useCatalogState() {
