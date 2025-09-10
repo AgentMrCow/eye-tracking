@@ -1,4 +1,4 @@
-import { For } from "solid-js";
+import { For, createMemo } from "solid-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart } from "@/components/ui/charts";
 import { Badge } from "@/components/ui/badge";
@@ -76,7 +76,7 @@ export default function SummaryCards(p: Props) {
 
       <For each={p.compareBy}>
         {(field) => {
-          const rowsFor = makeCompare(field);
+          const rowsFor = createMemo(() => makeCompare(field));
           return (
             <Card>
               <CardHeader><CardTitle>Comparison by {field.split("_").join(" ")} ({p.aggMode})</CardTitle></CardHeader>
@@ -95,21 +95,23 @@ export default function SummaryCards(p: Props) {
                       </tr>
                     </thead>
                     <tbody>
-                      {rowsFor.map((r) => (
-                        <tr>
-                          <td class="px-2 py-1">{r.bucket}</td>
-                          <td class="px-2 py-1">{r.tests}</td>
-                          <td class="px-2 py-1">{r.participants}</td>
-                          <td class="px-2 py-1">{r.mean.toFixed(1)}%</td>
-                          <td class="px-2 py-1">{r.median.toFixed(1)}%</td>
-                          <td class="px-2 py-1">{r.geThresh}</td>
-                          <td class="px-2 py-1">
-                            <div class="flex flex-wrap gap-2">
-                              {r.leaders.map((x) => <Badge variant="secondary">{x.id}: {x.pct.toFixed(1)}%</Badge>)}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      <For each={rowsFor()}>
+                        {(r) => (
+                          <tr>
+                            <td class="px-2 py-1">{r.bucket}</td>
+                            <td class="px-2 py-1">{r.tests}</td>
+                            <td class="px-2 py-1">{r.participants}</td>
+                            <td class="px-2 py-1">{r.mean.toFixed(1)}%</td>
+                            <td class="px-2 py-1">{r.median.toFixed(1)}%</td>
+                            <td class="px-2 py-1">{r.geThresh}</td>
+                            <td class="px-2 py-1">
+                              <div class="flex flex-wrap gap-2">
+                                {r.leaders.map((x) => <Badge variant="secondary">{x.id}: {x.pct.toFixed(1)}%</Badge>)}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </For>
                     </tbody>
                   </table>
                 </div>
