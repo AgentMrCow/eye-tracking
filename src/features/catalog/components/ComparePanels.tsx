@@ -31,7 +31,7 @@ const RevealClipPlugin = {
     const x = scales?.x;
     if (!chartArea || !x || typeof x.getPixelForValue !== "function") return;
 
-    const play = Number.isFinite(pluginOpts.playSec) ? Number(pluginOpts.playSec) : 0;
+    const play = Number.isFinite(pluginOpts.playSec) ? Number(pluginOpts.playSec) : Number.POSITIVE_INFINITY;
     const px = x.getPixelForValue(play);
     if (!Number.isFinite(px)) return; // <<< IMPORTANT
 
@@ -249,7 +249,7 @@ export default function ComparePanels(p: Props) {
       tooltip: { mode: "index", intersect: false, filter: (c: any) => !(c.dataset?._ph),
         callbacks: { label: (c: any) => `${c.dataset.label}: ${c.parsed.y.toFixed(1)}%` } },
       // @ts-expect-error custom plugin not in type registry
-      revealClip: { playSec: p.playSec() },
+      revealClip: { playSec: p.isPlaying() ? p.playSec() : Number.POSITIVE_INFINITY },
     },
     // Use object form to satisfy Chart.js typings.
     animation: { duration: 0 },
@@ -365,13 +365,13 @@ export default function ComparePanels(p: Props) {
               <Select value={selTest1()} onChange={(v) => { setSelTest1(v || ""); setSelTimeline1(""); setSelRecording1(""); }}
                       options={testOpts1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selTest1() || "Select test…"}</SelectValue></SelectTrigger>
-                <SelectContent />
+                <SelectContent class="max-h-60 overflow-auto" />
               </Select>
 
               <Select value={selPart1()} onChange={(v) => { setSelPart1(v || ""); setSelTimeline1(""); setSelRecording1(""); }}
                       options={partOpts1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selPart1() || "Select participant…"}</SelectValue></SelectTrigger>
-                <SelectContent />
+                <SelectContent class="max-h-60 overflow-auto" />
               </Select>
 
               <Show when={combos1().length > 1}>
@@ -425,13 +425,13 @@ export default function ComparePanels(p: Props) {
               <Select value={selTest2()} onChange={(v) => { setSelTest2(v || ""); setSelTimeline2(""); setSelRecording2(""); }}
                       options={testOpts2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selTest2() || "Select test…"}</SelectValue></SelectTrigger>
-                <SelectContent />
+                <SelectContent class="max-h-60 overflow-auto" />
               </Select>
 
               <Select value={selPart2()} onChange={(v) => { setSelPart2(v || ""); setSelTimeline2(""); setSelRecording2(""); }}
                       options={partOpts2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selPart2() || "Select participant…"}</SelectValue></SelectTrigger>
-                <SelectContent />
+                <SelectContent class="max-h-60 overflow-auto" />
               </Select>
 
               <Show when={combos2().length > 1}>
