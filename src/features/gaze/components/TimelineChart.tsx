@@ -1,4 +1,4 @@
-import { For, Show, createMemo } from "solid-js";
+import { For, createMemo } from "solid-js";
 import { LineChart } from "@/components/ui/charts";
 import type { MetaKey, WordWindow } from "../types";
 import { DEFAULT_COLORS } from "../constants";
@@ -97,20 +97,22 @@ export default function TimelineChart(p: Props) {
       {/* AOI-set toggles */}
       <div class="flex flex-wrap gap-2 justify-end mb-2 text-xs relative z-50 pointer-events-auto">
         <For each={META_KEYS}>{k => {
-          const sizes = p.aoiRow ? sizesLocal() : (p.testHasSetSizes ? p.testHasSetSizes() : sizesLocal());
-          const size = (sizes?.[k] as number) ?? 0;
-          const active = p.activeMetaFilters().has(k);
-          const disabled = size === 0;
+          const size = createMemo(() => {
+            const s = p.aoiRow ? sizesLocal() : p.testHasSetSizes?.();
+            return (s?.[k] as number) ?? 0;
+          });
+          const active = () => p.activeMetaFilters().has(k);
+          const disabled = () => size() === 0;
           return (
             <button type="button"
-              class={`px-2 py-0.5 rounded border transition ${active ? "bg-primary text-primary-foreground" : "bg-muted"} ${disabled ? "opacity-50" : ""}`}
+              class={`px-2 py-0.5 rounded border transition ${active() ? "bg-primary text-primary-foreground" : "bg-muted"} ${disabled() ? "opacity-50" : ""}`}
               style={{ 'pointer-events': 'auto', position: 'relative', 'z-index': 60 }}
-              onClick={(e) => { e.stopPropagation(); if (!disabled) p.toggleMeta(k); }}
-              onMouseDown={(e) => { e.stopPropagation(); if (!disabled) p.toggleMeta(k); }}
-              onPointerDown={(e) => { e.stopPropagation(); if (!disabled) p.toggleMeta(k); }}
+              onClick={(e) => { e.stopPropagation(); if (!disabled()) p.toggleMeta(k); }}
+              onMouseDown={(e) => { e.stopPropagation(); if (!disabled()) p.toggleMeta(k); }}
+              onPointerDown={(e) => { e.stopPropagation(); if (!disabled()) p.toggleMeta(k); }}
               title={k.replace(/_/g, " ")}
             >
-              {k.replace(/_/g, " ")} {size ? `(${size})` : ""}
+              {k.replace(/_/g, " ")} {size() ? `(${size()})` : ""}
             </button>
           );
         }}</For>
