@@ -36,7 +36,7 @@ export default function AoISelects(p: Props) {
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
       {/* BLUE */}
       <DropdownMenu placement="bottom-start">
-        <DropdownMenuTrigger as={Button<"button">} variant="outline" class="justify-between">
+        <DropdownMenuTrigger as={Button} variant="outline" class="justify-between">
           <div class="flex items-center gap-2">
             <span class="inline-block w-2 h-2 rounded-full bg-blue-600" />
             Blue set (AOIs)
@@ -68,7 +68,7 @@ export default function AoISelects(p: Props) {
 
       {/* RED */}
       <DropdownMenu placement="bottom-start">
-        <DropdownMenuTrigger as={Button<"button">} variant="outline" class="justify-between">
+        <DropdownMenuTrigger as={Button} variant="outline" class="justify-between">
           <div class="flex items-center gap-2">
             <span class="inline-block w-2 h-2 rounded-full bg-rose-500" />
             Compare against
@@ -82,6 +82,7 @@ export default function AoISelects(p: Props) {
             Auto (remaining)
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => p.setRedCustom(true)}>Custom selection</DropdownMenuItem>
+          <Show when={p.redCustom}>
             <>
               <DropdownMenuSeparator />
               <For each={ALL_AOI_KEYS}>
@@ -107,7 +108,7 @@ export default function AoISelects(p: Props) {
 
       {/* INVALID */}
       <DropdownMenu placement="bottom-start">
-        <DropdownMenuTrigger as={Button<"button">} variant="outline" class="justify-between">
+        <DropdownMenuTrigger as={Button} variant="outline" class="justify-between">
           <div class="flex items-center gap-2">
             <span class="inline-block w-2 h-2 rounded-full bg-amber-500" />
             Invalid AOI categories

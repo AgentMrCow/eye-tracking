@@ -76,6 +76,7 @@ export function useGazeQuery() {
     if (sel.size === 0) return new Set(); // show all
     const out = new Set<string>();
     const add = (codes?: string | null) => parseAOISet(codes).forEach(b => out.add(b));
+    if (sel.has("self_AOIs"))                add((row as any).self_AOIs as any);
     if (sel.has("correct_AOIs"))             add(row.correct_AOIs);
     if (sel.has("potentially_correct_AOIs")) add(row.potentially_correct_AOIs);
     if (sel.has("incorrect_AOIs"))           add(row.incorrect_AOIs);
@@ -348,6 +349,7 @@ export function useGazeQuery() {
     return {
       self_AOIs:                new Set(parseAOISet((row as any)?.self_AOIs)),
       correct_AOIs:             new Set(parseAOISet((row as any)?.correct_AOIs)),
+      potentially_correct_AOIs: new Set(parseAOISet((row as any)?.potentially_correct_AOIs)),
       incorrect_AOIs:           new Set(parseAOISet(row?.incorrect_AOIs)),
       correct_NULL:             new Set(parseAOISet(row?.correct_NULL)),
       potentially_correct_NULL: new Set(parseAOISet(row?.potentially_correct_NULL)),

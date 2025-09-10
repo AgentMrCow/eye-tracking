@@ -22,6 +22,7 @@ const CatalogRowSchema: z.ZodType<CatalogRow> = z
     group: z.string().nullable().optional(),
 
     // base AOI fields
+    self_AOIs: z.string().nullable().optional(),
     correct_AOIs: z.string().nullable().optional(),
     potentially_correct_AOIs: z.string().nullable().optional(),
     incorrect_AOIs: z.string().nullable().optional(),
@@ -84,15 +85,26 @@ export async function getCatalog(): Promise<CatalogRow[]> {
     }
 
     // Preserve pass-through columns that some cards need later
-      const merged: CatalogRow = {
-        ...base,
-        image_name: (pick(raw, "image_name") as string | null) ?? base.image_name ?? null,
-        timeline: (pick(raw, "timeline") as string | null) ?? base.timeline ?? null,
-        word_windows_json: (pick(raw, "word_windows_json") as string | null) ?? base.word_windows_json ?? null,
-        missing: (pick(raw, "missing") as string | null) ?? base.missing ?? null,
-        image_path: (pick(raw, "image_path") as string | null) ?? base.image_path ?? null,
-        aoi_extra: Object.keys(extra).length ? extra : undefined,
-      };
+    // Also normalize AOI fields using `pick` to tolerate spaces/underscores/casing in DB
+    const merged: CatalogRow = {
+      ...base,
+      // AOI base fields (normalized)
+      self_AOIs:                (pick(raw, "self_AOIs") as string | null) ?? (base as any).self_AOIs ?? null,
+      correct_AOIs:             (pick(raw, "correct_AOIs") as string | null) ?? base.correct_AOIs ?? null,
+      potentially_correct_AOIs: (pick(raw, "potentially_correct_AOIs") as string | null) ?? base.potentially_correct_AOIs ?? null,
+      incorrect_AOIs:           (pick(raw, "incorrect_AOIs") as string | null) ?? base.incorrect_AOIs ?? null,
+      correct_NULL:             (pick(raw, "correct_NULL") as string | null) ?? base.correct_NULL ?? null,
+      potentially_correct_NULL: (pick(raw, "potentially_correct_NULL") as string | null) ?? base.potentially_correct_NULL ?? null,
+      incorrect_NULL:           (pick(raw, "incorrect_NULL") as string | null) ?? base.incorrect_NULL ?? null,
+
+      // Misc pass-throughs
+      image_name: (pick(raw, "image_name") as string | null) ?? base.image_name ?? null,
+      timeline: (pick(raw, "timeline") as string | null) ?? base.timeline ?? null,
+      word_windows_json: (pick(raw, "word_windows_json") as string | null) ?? base.word_windows_json ?? null,
+      missing: (pick(raw, "missing") as string | null) ?? base.missing ?? null,
+      image_path: (pick(raw, "image_path") as string | null) ?? base.image_path ?? null,
+      aoi_extra: Object.keys(extra).length ? extra : undefined,
+    };
 
     return merged;
   });

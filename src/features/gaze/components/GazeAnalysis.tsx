@@ -40,7 +40,8 @@ export default function GazeAnalysis() {
   const testHasSetSizes = createMemo<Record<MetaKey, number>>(() => {
     const row = Q.catalogRowForSelectedTest();
     const primary = row ? {
-      correct_AOIs:             Array.from(new Set([...(parseAOISet(row?.correct_AOIs)||[]), ...(parseAOISet((row as any)?.self_AOIs)||[])])).length,
+      self_AOIs:                parseAOISet((row as any)?.self_AOIs).length,
+      correct_AOIs:             parseAOISet(row.correct_AOIs).length,
       potentially_correct_AOIs: parseAOISet(row.potentially_correct_AOIs).length,
       incorrect_AOIs:           parseAOISet(row.incorrect_AOIs).length,
       correct_NULL:             parseAOISet(row.correct_NULL).length,
@@ -52,7 +53,7 @@ export default function GazeAnalysis() {
     if (!primary) {
       const s = Q.metaBoxSets() as any;
       return {
-        self_AOIs:            s.self_AOIs?.size ?? 0,
+        self_AOIs:                s.self_AOIs?.size ?? 0,
         correct_AOIs:             s.correct_AOIs?.size ?? 0,
         potentially_correct_AOIs: s.potentially_correct_AOIs?.size ?? 0,
         incorrect_AOIs:           s.incorrect_AOIs?.size ?? 0,
@@ -65,7 +66,7 @@ export default function GazeAnalysis() {
   });
   const hasAnyAoiSet = createMemo(() => {
     const m = testHasSetSizes();
-    return m.correct_AOIs + m.potentially_correct_AOIs + m.incorrect_AOIs + m.correct_NULL + m.potentially_correct_NULL + m.incorrect_NULL > 0;
+    return m.self_AOIs + m.correct_AOIs + m.potentially_correct_AOIs + m.incorrect_AOIs + m.correct_NULL + m.potentially_correct_NULL + m.incorrect_NULL > 0;
   });
 
   // If sets exist but rows aggregate to zero across all time, show a helpful hint
@@ -75,6 +76,7 @@ export default function GazeAnalysis() {
     if (!rows.length) return false;
     const sets = Q.metaBoxSets() as Record<string, Set<string>>;
     const groups: string[][] = [
+      ...(sets.self_AOIs?.size ? [Array.from(sets.self_AOIs) as string[]] : []),
       ...(sets.correct_AOIs?.size ? [Array.from(sets.correct_AOIs) as string[]] : []),
       ...(sets.potentially_correct_AOIs?.size ? [Array.from(sets.potentially_correct_AOIs) as string[]] : []),
       ...(sets.incorrect_AOIs?.size ? [Array.from(sets.incorrect_AOIs) as string[]] : []),
@@ -105,6 +107,7 @@ export default function GazeAnalysis() {
       fallbackTest,
       catalogRowFound: !!row,
       catalogAOIs: row ? {
+        self_AOIs: (row as any).self_AOIs ?? null,
         correct_AOIs: row.correct_AOIs ?? null,
         potentially_correct_AOIs: row.potentially_correct_AOIs ?? null,
         incorrect_AOIs: row.incorrect_AOIs ?? null,
@@ -114,12 +117,13 @@ export default function GazeAnalysis() {
       } : null,
       parsedSizes: sizes,
       metaBoxSetsSizes: {
-        correct_AOIs: msets?.correct_AOIs?.size ?? 0,
+        self_AOIs:                msets?.self_AOIs?.size ?? 0,
+        correct_AOIs:             msets?.correct_AOIs?.size ?? 0,
         potentially_correct_AOIs: msets?.potentially_correct_AOIs?.size ?? 0,
-        incorrect_AOIs: msets?.incorrect_AOIs?.size ?? 0,
-        correct_NULL: msets?.correct_NULL?.size ?? 0,
+        incorrect_AOIs:           msets?.incorrect_AOIs?.size ?? 0,
+        correct_NULL:             msets?.correct_NULL?.size ?? 0,
         potentially_correct_NULL: msets?.potentially_correct_NULL?.size ?? 0,
-        incorrect_NULL: msets?.incorrect_NULL?.size ?? 0,
+        incorrect_NULL:           msets?.incorrect_NULL?.size ?? 0,
       },
       needsChoice: Q.needsChoice(),
       pairs: Q.pairs?.() ?? [],
@@ -176,8 +180,8 @@ export default function GazeAnalysis() {
       <Show when={Q.selectedTest() && (Q.recordingName() || Q.selectedTimeline())}>
         <div class="text-xs text-muted-foreground">
           {Q.selectedTimeline() && <>Timeline: <span class="font-medium">{Q.selectedTimeline()}</span></>}
-          {Q.recordingName() && <> ??Recording: <span class="font-medium">{Q.recordingName()}</span></>}
-          {Q.recordingPct() !== null && <> ??valid {Q.recordingPct()}%</>}
+          {Q.recordingName() && <> · Recording: <span class="font-medium">{Q.recordingName()}</span></>}
+          {Q.recordingPct() !== null && <> · valid {Q.recordingPct()}%</>}
           {Q.blockedByQuality() &&
             <span class="ml-2 px-2 py-0.5 rounded bg-yellow-100 text-yellow-800">
               filtered by threshold {Q.minValidPct()}%
@@ -185,7 +189,7 @@ export default function GazeAnalysis() {
           {/* durations summary */}
           {(Q.rawDurationSec() > 0 || Q.binnedDurationSec() > 0) && (
             <>
-              {' '}??dur raw {Q.rawDurationSec().toFixed(3)}s, binned {Q.binnedDurationSec().toFixed(3)}s, view {Q.viewSec().toFixed(3)}s
+              {' '}· dur raw {Q.rawDurationSec().toFixed(3)}s, binned {Q.binnedDurationSec().toFixed(3)}s, view {Q.viewSec().toFixed(3)}s
             </>
           )}
         </div>
