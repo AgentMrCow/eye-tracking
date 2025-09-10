@@ -5,6 +5,7 @@ import type {
 import { ALL_AOI_KEYS, AOI_KEY_LABEL } from "../constants";
 import { boxesFor, labelForKey } from "../utils";
 import { getCatalog, getParticipants, getGazeData } from "../services/catalogApi";
+import { loadComparePrefs, saveComparePrefs, type ComparePrefs } from "@/shared/prefs";
 
 export function useCatalogState() {
   /* data */
@@ -19,12 +20,36 @@ export function useCatalogState() {
   const [seriesF, setSeriesF] = createSignal("all");
   const [caseF, setCaseF] = createSignal("all");
 
-  /* AOI keys */
-  const [blueKeys, setBlueKeys] = createSignal<AoiKey[]>(["correct_AOIs"]);
-  const [redKeys, setRedKeys] = createSignal<AoiKey[]>(ALL_AOI_KEYS.filter((k) => k !== "correct_AOIs"));
-  const [redCustom, setRedCustom] = createSignal(false);
+  /* AOI keys (initialize from localStorage synchronously to avoid flash of defaults) */
+  let initBlue: AoiKey[] = ["correct_AOIs"];
+  let initRedCustom = false;
+  let initInvalid: ("other" | "missing" | "out_of_screen")[] = ["missing"];
+  let initRed: AoiKey[] = ALL_AOI_KEYS.filter((k) => !initBlue.includes(k));
+  try {
+    const raw = window?.localStorage?.getItem("compare_prefs");
+    if (raw) {
+      const obj = JSON.parse(raw) as { blueKeys?: AoiKey[]; redKeys?: AoiKey[]; redCustom?: boolean; invalidCats?: ("other"|"missing"|"out_of_screen")[] };
+      const allowed = new Set(ALL_AOI_KEYS as string[]);
+      const bk = (obj.blueKeys || []).filter((k) => allowed.has(k));
+      if (bk.length) initBlue = bk;
+      initRedCustom = !!obj.redCustom;
+      if (initRedCustom) {
+        const rk0 = (obj.redKeys || []).filter((k) => allowed.has(k));
+        const rk = rk0.filter((k) => !initBlue.includes(k));
+        initRed = rk.length ? rk : ALL_AOI_KEYS.filter((k) => !initBlue.includes(k));
+      } else {
+        initRed = ALL_AOI_KEYS.filter((k) => !initBlue.includes(k));
+      }
+      const invAll = new Set(["missing", "out_of_screen", "other"] as const);
+      const inv = (obj.invalidCats || []).filter((k) => invAll.has(k as any));
+      if (inv.length) initInvalid = inv as any;
+    }
+  } catch {}
 
-  const [invalidCats, setInvalidCats] = createSignal<("other" | "missing" | "out_of_screen")[]>(["missing"]);
+  const [blueKeys, setBlueKeys] = createSignal<AoiKey[]>(initBlue);
+  const [redKeys, setRedKeys] = createSignal<AoiKey[]>(initRed);
+  const [redCustom, setRedCustom] = createSignal(initRedCustom);
+  const [invalidCats, setInvalidCats] = createSignal<("other" | "missing" | "out_of_screen")[]>(initInvalid);
 
   const [minValidPct, setMinValidPct] = createSignal(0);
   const [thresholdPct, setThresholdPct] = createSignal(50);
@@ -40,6 +65,22 @@ export function useCatalogState() {
   onMount(async () => {
     setCatalog(await getCatalog());
     setParticipants(await getParticipants());
+    // Load persisted compare preferences
+    const prefs = await loadComparePrefs();
+    if (prefs) {
+      const allowed = new Set(ALL_AOI_KEYS as string[]);
+      const bk = (prefs.blueKeys || []).filter((k) => allowed.has(k));
+      if (bk.length) setBlueKeys(bk);
+      setRedCustom(!!prefs.redCustom);
+      if (prefs.redCustom) {
+        const rk0 = (prefs.redKeys || []).filter((k) => allowed.has(k));
+        const rk = rk0.filter((k) => !bk.includes(k));
+        setRedKeys(rk.length ? rk : ALL_AOI_KEYS.filter((k) => !bk.includes(k)));
+      }
+      const invAll = new Set(["missing", "out_of_screen", "other"] as const);
+      const inv = (prefs.invalidCats || []).filter((k) => invAll.has(k as any));
+      if (inv.length) setInvalidCats(inv as any);
+    }
   });
 
   /* auto-complement red set while not in custom mode */
@@ -47,6 +88,17 @@ export function useCatalogState() {
     const bk = blueKeys();
     if (redCustom()) return;
     setRedKeys(ALL_AOI_KEYS.filter((k) => !bk.includes(k)));
+  });
+
+  // Persist compare preferences on change
+  createEffect(() => {
+    const prefs: ComparePrefs = {
+      blueKeys: blueKeys(),
+      redKeys: redKeys(),
+      redCustom: redCustom(),
+      invalidCats: invalidCats() as any,
+    };
+    saveComparePrefs(prefs);
   });
 
   /* option lists */

@@ -53,7 +53,14 @@
 - New feature under route `/data-toggle` adds a panel to disable specific `Test × Recording × Participant` triples.
 - Backend stores disabled triples in `AppData/disabled_slices.json` and excludes them in:
   - `get_gaze_data`, `get_box_stats`, `get_timeline_recordings`, `get_participants_for_test`, `get_tests_for_participant`, and the maps in `get_static_data`.
-- New Tauri commands:
+ - New Tauri commands:
   - `list_gaze_slices(testName?, participants?: string[])` → list distinct triples from `gaze_data`.
   - `get_disabled_slices()` / `set_disabled_slices(slices)` / `toggle_disabled_slice(slice, disabled)` for management.
  - The panel includes a single sortable search table (TanStack) built from `search_slices()` with columns from `test_catalog` and durations from `test_group`. The Enable/Disable toggle is in-table.
+
+## Preferences Persistence
+- Catalog Compare user preferences are persisted across runs using Tauri Store (fallback to `localStorage` in web preview):
+  - Stored file: `user_prefs.json` under the app's data directory.
+  - Stored keys: `compare_prefs` with `{ blueKeys, redKeys, redCustom, invalidCats }`.
+  - On app start, these preferences are loaded and applied in `useCatalogState`.
+  - Changing AOI sets or invalid categories automatically saves the updated preferences.
