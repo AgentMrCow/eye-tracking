@@ -249,7 +249,7 @@ export default function ComparePanels(p: Props) {
       tooltip: { mode: "index", intersect: false, filter: (c: any) => !(c.dataset?._ph),
         callbacks: { label: (c: any) => `${c.dataset.label}: ${c.parsed.y.toFixed(1)}%` } },
       // @ts-expect-error custom plugin not in type registry
-      revealClip: { playSec: p.playSec() },
+      revealClip: { playSec: p.isPlaying() ? p.playSec() : p.duration() },
     },
     // Use object form to satisfy Chart.js typings.
     animation: { duration: 0 },
@@ -314,7 +314,11 @@ export default function ComparePanels(p: Props) {
   const drawFrameRight = (sec: number) => drawFrameGeneric(sec, canvas2El, img2El, replayPts2(), p.duration());
 
   // repaint playhead + overlay
-  createEffect(() => { const _ = p.playSec(); drawFrameLeft(_); drawFrameRight(_); });
+  createEffect(() => {
+    const sec = p.isPlaying() ? p.playSec() : p.duration();
+    drawFrameLeft(sec);
+    drawFrameRight(sec);
+  });
 
   return (
     <Card>
@@ -365,13 +369,13 @@ export default function ComparePanels(p: Props) {
               <Select value={selTest1()} onChange={(v) => { setSelTest1(v || ""); setSelTimeline1(""); setSelRecording1(""); }}
                       options={testOpts1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selTest1() || "Select test…"}</SelectValue></SelectTrigger>
-                <SelectContent />
+                <SelectContent class="max-h-60 overflow-y-auto" />
               </Select>
 
               <Select value={selPart1()} onChange={(v) => { setSelPart1(v || ""); setSelTimeline1(""); setSelRecording1(""); }}
                       options={partOpts1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selPart1() || "Select participant…"}</SelectValue></SelectTrigger>
-                <SelectContent />
+                <SelectContent class="max-h-60 overflow-y-auto" />
               </Select>
 
               <Show when={combos1().length > 1}>
@@ -411,7 +415,7 @@ export default function ComparePanels(p: Props) {
                       img1El = img; canvas1El = cvs;
                       if (!canvas1El || !img1El) return;
                       canvas1El.width = img1El.clientWidth; canvas1El.height = img1El.clientHeight;
-                      drawFrameLeft(p.playSec());
+                      drawFrameLeft(p.isPlaying() ? p.playSec() : p.duration());
                     }}
                   />
                 </>
@@ -425,13 +429,13 @@ export default function ComparePanels(p: Props) {
               <Select value={selTest2()} onChange={(v) => { setSelTest2(v || ""); setSelTimeline2(""); setSelRecording2(""); }}
                       options={testOpts2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selTest2() || "Select test…"}</SelectValue></SelectTrigger>
-                <SelectContent />
+                <SelectContent class="max-h-60 overflow-y-auto" />
               </Select>
 
               <Select value={selPart2()} onChange={(v) => { setSelPart2(v || ""); setSelTimeline2(""); setSelRecording2(""); }}
                       options={partOpts2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selPart2() || "Select participant…"}</SelectValue></SelectTrigger>
-                <SelectContent />
+                <SelectContent class="max-h-60 overflow-y-auto" />
               </Select>
 
               <Show when={combos2().length > 1}>
@@ -469,7 +473,7 @@ export default function ComparePanels(p: Props) {
                       img2El = img; canvas2El = cvs;
                       if (!canvas2El || !img2El) return;
                       canvas2El.width = img2El.clientWidth; canvas2El.height = img2El.clientHeight;
-                      drawFrameRight(p.playSec());
+                      drawFrameRight(p.isPlaying() ? p.playSec() : p.duration());
                     }}
                   />
                 </>
