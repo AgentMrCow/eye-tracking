@@ -105,11 +105,10 @@ export default function TimelineChart(p: Props) {
           const disabled = () => size() === 0;
           return (
             <button type="button"
-              class={`px-2 py-0.5 rounded border transition ${active() ? "bg-primary text-primary-foreground" : "bg-muted"} ${disabled() ? "opacity-50" : ""}`}
+              class={`px-2 py-0.5 rounded border transition ${active() ? "bg-primary text-primary-foreground" : "bg-muted"} ${disabled() ? "opacity-50 cursor-not-allowed" : ""}`}
               style={{ 'pointer-events': 'auto', position: 'relative', 'z-index': 60 }}
+              disabled={disabled()}
               onClick={(e) => { e.stopPropagation(); if (!disabled()) p.toggleMeta(k); }}
-              onMouseDown={(e) => { e.stopPropagation(); if (!disabled()) p.toggleMeta(k); }}
-              onPointerDown={(e) => { e.stopPropagation(); if (!disabled()) p.toggleMeta(k); }}
               title={k.replace(/_/g, " ")}
             >
               {k.replace(/_/g, " ")} {size() ? `(${size()})` : ""}
