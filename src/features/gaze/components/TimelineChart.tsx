@@ -19,10 +19,7 @@ type Props = {
   testHasSetSizes?: () => Record<MetaKey, number>;
 };
 
-const META_KEYS: MetaKey[] = [
-  "correct_AOIs","potentially_correct_AOIs","incorrect_AOIs",
-  "correct_NULL","potentially_correct_NULL","incorrect_NULL",
-];
+const META_KEYS: MetaKey[] = ["self_AOIs","correct_AOIs","potentially_correct_AOIs","incorrect_AOIs","correct_NULL","potentially_correct_NULL","incorrect_NULL"];
 
 export default function TimelineChart(p: Props) {
   const dat = () => p.rows.map(r => ({ t: (+new Date(r.timestamp) - p.baseMs) / 1000, ...r }));
@@ -56,8 +53,9 @@ export default function TimelineChart(p: Props) {
   // Compute AOI sizes locally when possible for reliability
   const sizesLocal = createMemo<Record<MetaKey, number>>(() => {
     const row = p.aoiRow as any;
-    if (!row) return { correct_AOIs:0, potentially_correct_AOIs:0, incorrect_AOIs:0, correct_NULL:0, potentially_correct_NULL:0, incorrect_NULL:0 };
+    if (!row) return { self_AOIs:0, correct_AOIs:0, potentially_correct_AOIs:0, incorrect_AOIs:0, correct_NULL:0, potentially_correct_NULL:0, incorrect_NULL:0 } as any;
     return {
+      self_AOIs:             parseAOISet(row?.self_AOIs).length,
       correct_AOIs:             parseAOISet(row?.correct_AOIs).length,
       potentially_correct_AOIs: parseAOISet(row?.potentially_correct_AOIs).length,
       incorrect_AOIs:           parseAOISet(row?.incorrect_AOIs).length,

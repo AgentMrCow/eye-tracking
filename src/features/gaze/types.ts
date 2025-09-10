@@ -21,6 +21,7 @@ export type TLRec = { timeline: string; recording: string };
 export type CatalogRow = {
   test_name: string;
   group?: string | null;
+  self_AOIs?: string | null;
   correct_AOIs?: string | null;
   potentially_correct_AOIs?: string | null;
   incorrect_AOIs?: string | null;
@@ -44,7 +45,7 @@ export type TestMeta = {
 };
 
 export type MetaKey =
-  | "correct_AOIs" | "potentially_correct_AOIs" | "incorrect_AOIs"
+  | "self_AOIs" | "correct_AOIs" | "potentially_correct_AOIs" | "incorrect_AOIs"
   | "correct_NULL" | "potentially_correct_NULL" | "incorrect_NULL";
 
 export type { WordWindow } from "@/shared/type";

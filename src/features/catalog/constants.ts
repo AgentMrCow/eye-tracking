@@ -6,7 +6,7 @@ export const AOI_CODE_TO_BOX: Record<string, Exclude<BoxTypes, "other" | "missin
   S3: "Animal 3",  O3A: "Object 1 for Animal 3", O3B: "Object 2 for Animal 3",
 };
 
-export const BASE_AOI_KEYS: AoiKey[] = [
+export const BASE_AOI_KEYS: AoiKey[] = ["self_AOIs", 
   "correct_AOIs",
   "potentially_correct_AOIs",
   "incorrect_AOIs",
@@ -40,6 +40,7 @@ export const EXTRA_AOI_KEYS: AoiKey[] = [
 export const ALL_AOI_KEYS: AoiKey[] = [...BASE_AOI_KEYS, ...EXTRA_AOI_KEYS];
 
 export const AOI_KEY_LABEL: Record<string, string> = {
+  self_AOIs: "self AOIs",
   correct_AOIs: "correct AOIs",
   potentially_correct_AOIs: "potentially correct AOIs",
   incorrect_AOIs: "incorrect AOIs",
@@ -59,3 +60,4 @@ export const FIELD_MAP: Record<CompareBy, keyof DetailedRow> = {
 
 export const HUE_START = 220;
 export const HUE_END = 0;
+

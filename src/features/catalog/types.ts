@@ -2,6 +2,7 @@ export type TestCatalogRow = {
   test_name: string;
   sentence?: string | null;
   group?: string | null;
+  self_AOIs?: string | null;
 
   correct_AOIs?: string | null;
   potentially_correct_AOIs?: string | null;
@@ -73,3 +74,4 @@ export type ParticipantSummary = {
 };
 
 export type { WordWindow } from "@/shared/type";
+

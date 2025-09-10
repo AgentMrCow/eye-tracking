@@ -1,13 +1,15 @@
-import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
+﻿import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
 import { NumberField, NumberFieldInput } from "@/components/ui/number-field";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart } from "@/components/ui/charts";
+import { Skeleton } from "@/components/ui/skeleton";
+import { isLoading } from "@/shared/loading";
 import type { BoxTypes, TimelineRecording, WordWindow } from "../types";
 import { getTestImage, getTimelineRecordings, getWordWindows } from "../services/catalogApi";
 import { getStatic } from "@/shared/tauriClient";
-import { Chart as ChartJS, type ChartOptions } from "chart.js";
+import { type ChartOptions } from "chart.js";
 import { timeColor } from "../utils";
 
 type Props = {
@@ -45,7 +47,7 @@ const RevealClipPlugin = {
 } as const;
 
 
-try { ChartJS.register(RevealClipPlugin as any); } catch {}
+
 
 export default function ComparePanels(p: Props) {
   const [binMs, setBinMs] = createSignal(100);
@@ -366,13 +368,12 @@ export default function ComparePanels(p: Props) {
           </Button>
           <div class="flex items-center gap-2 ml-auto">
             <Button size="icon" onClick={p.isPlaying() ? p.pause : p.play} disabled={p.duration() <= 0}>
-              {p.isPlaying() ? "❚❚" : "►"}
+              {p.isPlaying() ? "Pause" : "Play"}
             </Button>
-            <Button size="icon" variant="secondary" onClick={p.stop} disabled={p.duration() <= 0}>■</Button>
+            <Button size="icon" variant="secondary" onClick={p.stop} disabled={p.duration() <= 0}>Stop</Button>
             <input type="range" min="0" max={p.duration()} step="0.01" value={p.playSec()}
                    class="w-48 accent-primary-500"
                    onInput={(e) => p.scrub(+e.currentTarget.value)} />
-            <span class="text-xs tabular-nums">{p.playSec().toFixed(2)} / {p.duration().toFixed(2)} s</span>
           </div>
         </div>
 
@@ -383,26 +384,26 @@ export default function ComparePanels(p: Props) {
             <div class="flex flex-wrap items-center gap-2">
               <Select value={selTest1()} onChange={(v) => { setSelTest1(v || ""); setSelTimeline1(""); setSelRecording1(""); }}
                       options={testOpts1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                <SelectTrigger class="w-60"><SelectValue>{selTest1() || "Select test…"}</SelectValue></SelectTrigger>
+                <SelectTrigger class="w-60"><SelectValue>{selTest1() || "Select test"}</SelectValue></SelectTrigger>
                 <SelectContent class="max-h-60 overflow-y-auto" />
               </Select>
 
               <Select value={selPart1()} onChange={(v) => { setSelPart1(v || ""); setSelTimeline1(""); setSelRecording1(""); }}
                       options={partOpts1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                <SelectTrigger class="w-60"><SelectValue>{selPart1() || "Select participant…"}</SelectValue></SelectTrigger>
+                <SelectTrigger class="w-60"><SelectValue>{selPart1() || "Select participant"}</SelectValue></SelectTrigger>
                 <SelectContent class="max-h-60 overflow-y-auto" />
               </Select>
 
               <Show when={combos1().length > 1}>
                 <Select value={selTimeline1()} onChange={(v) => { setSelTimeline1(v || ""); setSelRecording1(""); }}
                         options={timelines1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                  <SelectTrigger class="w-56"><SelectValue>{selTimeline1() || "Select timeline…"}</SelectValue></SelectTrigger>
+                  <SelectTrigger class="w-56"><SelectValue>{selTimeline1() || "Select timeline"}</SelectValue></SelectTrigger>
                   <SelectContent />
                 </Select>
 
                 <Select value={selRecording1()} onChange={(v) => setSelRecording1(v || "")}
                         options={recOpts1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                  <SelectTrigger class="w-56"><SelectValue>{selRecording1() || "Select recording…"}</SelectValue></SelectTrigger>
+                  <SelectTrigger class="w-56"><SelectValue>{selRecording1() || "Select recording"}</SelectValue></SelectTrigger>
                   <SelectContent />
                 </Select>
               </Show>
@@ -416,8 +417,10 @@ export default function ComparePanels(p: Props) {
               }>
                 <>
                   <div class="h-[360px] rounded border">
-                    <Show when={viz1().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
-                      <LineChart data={viz1()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
+                    <Show when={!isLoading()} fallback={<div class="h-full"><Skeleton class="w-full h-full" /></div>}>
+                      <Show when={viz1().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
+                        <LineChart data={viz1()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
+                      </Show>
                     </Show>
                   </div>
 
@@ -443,26 +446,26 @@ export default function ComparePanels(p: Props) {
             <div class="flex flex-wrap items-center gap-2">
               <Select value={selTest2()} onChange={(v) => { setSelTest2(v || ""); setSelTimeline2(""); setSelRecording2(""); }}
                       options={testOpts2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                <SelectTrigger class="w-60"><SelectValue>{selTest2() || "Select test…"}</SelectValue></SelectTrigger>
+                <SelectTrigger class="w-60"><SelectValue>{selTest2() || "Select test"}</SelectValue></SelectTrigger>
                 <SelectContent class="max-h-60 overflow-y-auto" />
               </Select>
 
               <Select value={selPart2()} onChange={(v) => { setSelPart2(v || ""); setSelTimeline2(""); setSelRecording2(""); }}
                       options={partOpts2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                <SelectTrigger class="w-60"><SelectValue>{selPart2() || "Select participant…"}</SelectValue></SelectTrigger>
+                <SelectTrigger class="w-60"><SelectValue>{selPart2() || "Select participant"}</SelectValue></SelectTrigger>
                 <SelectContent class="max-h-60 overflow-y-auto" />
               </Select>
 
               <Show when={combos2().length > 1}>
                 <Select value={selTimeline2()} onChange={(v) => { setSelTimeline2(v || ""); setSelRecording2(""); }}
                         options={timelines2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                  <SelectTrigger class="w-56"><SelectValue>{selTimeline2() || "Select timeline…"}</SelectValue></SelectTrigger>
+                  <SelectTrigger class="w-56"><SelectValue>{selTimeline2() || "Select timeline"}</SelectValue></SelectTrigger>
                   <SelectContent />
                 </Select>
 
                 <Select value={selRecording2()} onChange={(v) => setSelRecording2(v || "")}
                         options={recOpts2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                  <SelectTrigger class="w-56"><SelectValue>{selRecording2() || "Select recording…"}</SelectValue></SelectTrigger>
+                  <SelectTrigger class="w-56"><SelectValue>{selRecording2() || "Select recording"}</SelectValue></SelectTrigger>
                   <SelectContent />
                 </Select>
               </Show>
@@ -476,8 +479,10 @@ export default function ComparePanels(p: Props) {
               }>
                 <>
                   <div class="h-[360px] rounded border">
-                    <Show when={viz2().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
-                      <LineChart data={viz2()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
+                    <Show when={!isLoading()} fallback={<div class="h-full"><Skeleton class="w-full h-full" /></div>}>
+                      <Show when={viz2().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
+                        <LineChart data={viz2()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
+                      </Show>
                     </Show>
                   </div>
 

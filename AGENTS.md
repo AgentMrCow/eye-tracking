@@ -42,3 +42,18 @@
 - Respect the feature‑first layout and the `@` alias.
 - Update this file and `README.md` when behavior or commands change.
 
+## Backend Additions (QAC)
+- SQLite table `participants(participant TEXT PRIMARY KEY, is_qac INTEGER CHECK (is_qac IN (0,1)))` is bundled in `src-tauri/resources/eye_tracking.db`.
+- Preload: `TLK311`–`TLK320` have `is_qac = 0` (non‑QAC). All others are treated as QAC by default.
+- New Tauri command: `get_participants()` → returns the full `participants` table as an array of maps (future‑proof if more columns are added).
+ - New Tauri command: `get_participants()` → returns the full `participants` table as an array of maps (future‑proof if more columns are added).
+ - New Tauri commands: `search_tests()` (aggregated by test) and `search_slices()` (triple-level rows for the Data Toggle table: test_name, participant, recording, group, image_name, sentence, pair duration).
+
+## Data Toggle Panel
+- New feature under route `/data-toggle` adds a panel to disable specific `Test × Recording × Participant` triples.
+- Backend stores disabled triples in `AppData/disabled_slices.json` and excludes them in:
+  - `get_gaze_data`, `get_box_stats`, `get_timeline_recordings`, `get_participants_for_test`, `get_tests_for_participant`, and the maps in `get_static_data`.
+- New Tauri commands:
+  - `list_gaze_slices(testName?, participants?: string[])` → list distinct triples from `gaze_data`.
+  - `get_disabled_slices()` / `set_disabled_slices(slices)` / `toggle_disabled_slice(slice, disabled)` for management.
+ - The panel includes a single sortable search table (TanStack) built from `search_slices()` with columns from `test_catalog` and durations from `test_group`. The Enable/Disable toggle is in-table.

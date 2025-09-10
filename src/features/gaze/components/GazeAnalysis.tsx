@@ -1,5 +1,7 @@
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { isLoading } from "@/shared/loading";
 
 import ControlsBar from "./ControlsBar";
 import TimelineChart from "./TimelineChart";
@@ -38,7 +40,7 @@ export default function GazeAnalysis() {
   const testHasSetSizes = createMemo<Record<MetaKey, number>>(() => {
     const row = Q.catalogRowForSelectedTest();
     const primary = row ? {
-      correct_AOIs:             parseAOISet(row.correct_AOIs).length,
+      correct_AOIs:             Array.from(new Set([...(parseAOISet(row?.correct_AOIs)||[]), ...(parseAOISet((row as any)?.self_AOIs)||[])])).length,
       potentially_correct_AOIs: parseAOISet(row.potentially_correct_AOIs).length,
       incorrect_AOIs:           parseAOISet(row.incorrect_AOIs).length,
       correct_NULL:             parseAOISet(row.correct_NULL).length,
@@ -46,10 +48,11 @@ export default function GazeAnalysis() {
       incorrect_NULL:           parseAOISet(row.incorrect_NULL).length,
     } as Record<MetaKey, number> : null;
 
-    // Fallback to runtime metaBoxSets if catalog row wasn’t found yet
+    // Fallback to runtime metaBoxSets if catalog row wasn?雓?found yet
     if (!primary) {
       const s = Q.metaBoxSets() as any;
       return {
+        self_AOIs:            s.self_AOIs?.size ?? 0,
         correct_AOIs:             s.correct_AOIs?.size ?? 0,
         potentially_correct_AOIs: s.potentially_correct_AOIs?.size ?? 0,
         incorrect_AOIs:           s.incorrect_AOIs?.size ?? 0,
@@ -173,8 +176,8 @@ export default function GazeAnalysis() {
       <Show when={Q.selectedTest() && (Q.recordingName() || Q.selectedTimeline())}>
         <div class="text-xs text-muted-foreground">
           {Q.selectedTimeline() && <>Timeline: <span class="font-medium">{Q.selectedTimeline()}</span></>}
-          {Q.recordingName() && <> · Recording: <span class="font-medium">{Q.recordingName()}</span></>}
-          {Q.recordingPct() !== null && <> · valid {Q.recordingPct()}%</>}
+          {Q.recordingName() && <> ??Recording: <span class="font-medium">{Q.recordingName()}</span></>}
+          {Q.recordingPct() !== null && <> ??valid {Q.recordingPct()}%</>}
           {Q.blockedByQuality() &&
             <span class="ml-2 px-2 py-0.5 rounded bg-yellow-100 text-yellow-800">
               filtered by threshold {Q.minValidPct()}%
@@ -182,7 +185,7 @@ export default function GazeAnalysis() {
           {/* durations summary */}
           {(Q.rawDurationSec() > 0 || Q.binnedDurationSec() > 0) && (
             <>
-              {' '}· dur raw {Q.rawDurationSec().toFixed(3)}s, binned {Q.binnedDurationSec().toFixed(3)}s, view {Q.viewSec().toFixed(3)}s
+              {' '}??dur raw {Q.rawDurationSec().toFixed(3)}s, binned {Q.binnedDurationSec().toFixed(3)}s, view {Q.viewSec().toFixed(3)}s
             </>
           )}
         </div>
@@ -205,24 +208,26 @@ export default function GazeAnalysis() {
             <CardContent>
               <div class="flex items-center justify-between mb-2">
                 <div class="text-xs text-muted-foreground">
-                  AOI sets: c:{testHasSetSizes().correct_AOIs} pc:{testHasSetSizes().potentially_correct_AOIs} i:{testHasSetSizes().incorrect_AOIs} cN:{testHasSetSizes().correct_NULL} pcN:{testHasSetSizes().potentially_correct_NULL} iN:{testHasSetSizes().incorrect_NULL}
+                  AOI sets: s:{testHasSetSizes().self_AOIs} c:{testHasSetSizes().correct_AOIs} pc:{testHasSetSizes().potentially_correct_AOIs} i:{testHasSetSizes().incorrect_AOIs} cN:{testHasSetSizes().correct_NULL} pcN:{testHasSetSizes().potentially_correct_NULL} iN:{testHasSetSizes().incorrect_NULL}
                 </div>
                 <button class="text-xs px-2 py-0.5 border rounded" onClick={() => setShowAoiDebug(!showAoiDebug())}>
                   {showAoiDebug() ? 'Hide AOI debug' : 'Show AOI debug'}
                 </button>
               </div>
-              <TimelineChart
-                rows={Q.rows() as any}
-                baseMs={Q.baseMs()}
-                viewSec={Q.viewSec()}
-                wordWin={Q.wordWin()}
-                selectedBoxes={() => Q.selectedBoxes() as any}
-                colorMap={() => Q.colorMap()}
-                toggleMeta={Q.toggleMeta}
-                activeMetaFilters={() => Q.activeMetaFilters()}
-                testHasSetSizes={() => testHasSetSizes()}
-                aoiRow={Q.catalogRowForSelectedTest() as any}
-              />
+              <Show when={!isLoading()} fallback={<div class="h-[500px]"><Skeleton class="w-full h-full" /></div>}>
+                <TimelineChart
+                  rows={Q.rows() as any}
+                  baseMs={Q.baseMs()}
+                  viewSec={Q.viewSec()}
+                  wordWin={Q.wordWin()}
+                  selectedBoxes={() => Q.selectedBoxes() as any}
+                  colorMap={() => Q.colorMap()}
+                  toggleMeta={Q.toggleMeta}
+                  activeMetaFilters={() => Q.activeMetaFilters()}
+                  testHasSetSizes={() => testHasSetSizes()}
+                  aoiRow={Q.catalogRowForSelectedTest() as any}
+                />
+              </Show>
               <Show when={showAoiDebug()}>
                 <pre class="mt-2 p-2 bg-muted rounded text-[11px] overflow-auto">
                   {JSON.stringify(aoiDebug(), null, 2)}
@@ -237,13 +242,33 @@ export default function GazeAnalysis() {
             <CardContent>
               <Show when={hasAnyAoiSet()} fallback={<div class="text-sm text-muted-foreground">No AOI sets defined for this test in catalog.</div>}>
                 <Show when={hasAnyAoiValue()} fallback={<div class="text-sm text-muted-foreground">No gaze fell into any AOI sets in current view.</div>}>
-                  <AoiSetChart
-                    rows={Q.rows() as any}
-                    baseMs={Q.baseMs()}
-                    viewSec={Q.viewSec()}
-                    sets={Q.metaBoxSets() as any}
-                  />
+                  <Show when={!isLoading()} fallback={<div class="h-[400px]"><Skeleton class="w-full h-full" /></div>}>
+                    <AoiSetChart
+                      rows={Q.rows() as any}
+                      baseMs={Q.baseMs()}
+                      viewSec={Q.viewSec()}
+                      sets={Q.metaBoxSets() as any}
+                    />
+                  </Show>
                 </Show>
+              </Show>
+            </CardContent>
+          </Card>
+
+          {/* Self AOIs (codes) */}
+          <Card class="xl:col-span-2">
+            <CardHeader><CardTitle>Self AOIs</CardTitle></CardHeader>
+            <CardContent>
+              <Show when={Q.catalogRowForSelectedTest()} fallback={<div class="text-sm text-muted-foreground">Select a test to view self AOIs.</div>}>
+                {(() => {
+                  const row: any = Q.catalogRowForSelectedTest();
+                  const codes = (row?.self_AOIs || "").toString().replace(/，/g, ",").split(/[,\s]+/).map((t: string) => t.trim()).filter(Boolean);
+                  return (
+                    <div class="flex flex-wrap gap-2 text-xs">
+                      {codes.length ? codes.map((c: string) => <span class="px-2 py-0.5 rounded border bg-muted">{c}</span>) : <span class="text-muted-foreground">None</span>}
+                    </div>
+                  );
+                })()}
               </Show>
             </CardContent>
           </Card>
@@ -293,3 +318,5 @@ export default function GazeAnalysis() {
     </div>
   );
 }
+
+

@@ -310,14 +310,14 @@ export function useGazeQuery() {
     }).sort((a, b) => +new Date(a.timestamp) - +new Date(b.timestamp));
     setRows(r);
   });
-  // participants allowed by selected test (sync from static map) — no auto-clears
+  // participants allowed by selected test (sync from static map) ??no auto-clears
   createEffect(() => {
     const t = selectedTest()?.value ?? null;
     if (!t) { setPartsForTest(null); return; }
     const parts = mapPartsForTest()[t] || [];
     setPartsForTest(parts);
   });
-  // tests allowed by selected participant (sync from static map) — no auto-clears
+  // tests allowed by selected participant (sync from static map) ??no auto-clears
   createEffect(() => {
     const p = selectedPart()?.value ?? null;
     if (!p) { setTestsForParticipant(null); return; }
@@ -346,8 +346,8 @@ export function useGazeQuery() {
       if (tG) row = map.get(tG);
     }
     return {
-      correct_AOIs:             new Set(parseAOISet(row?.correct_AOIs)),
-      potentially_correct_AOIs: new Set(parseAOISet(row?.potentially_correct_AOIs)),
+      self_AOIs:                new Set(parseAOISet((row as any)?.self_AOIs)),
+      correct_AOIs:             new Set(parseAOISet((row as any)?.correct_AOIs)),
       incorrect_AOIs:           new Set(parseAOISet(row?.incorrect_AOIs)),
       correct_NULL:             new Set(parseAOISet(row?.correct_NULL)),
       potentially_correct_NULL: new Set(parseAOISet(row?.potentially_correct_NULL)),
@@ -439,3 +439,5 @@ export function useGazeQuery() {
     clearMetaFilters,
   };
 }
+
+

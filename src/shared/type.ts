@@ -27,6 +27,23 @@ export interface GazeStats {
   total_points: number;
 }
 
+export interface DisabledSlice {
+  test_name: string;
+  recording_name: string;
+  participant_name: string;
+}
+
+export interface SearchTestRow {
+  test_name: string;
+  group?: string | null;
+  image_name?: string | null;
+  sentence?: string | null;
+  avg_pair_duration_seconds?: number | null;
+  occurrences?: number | null;
+  mp4_triples?: number | null;
+  png_triples?: number | null;
+}
+
 export interface TimelineRecording {
   timeline: string;
   recording: string;
@@ -38,4 +55,16 @@ export interface WordWindow {
   end_sec: number;
   test_name: string;
   timeline: string;
+}
+
+export interface SearchSliceRow {
+  test_name: string;
+  recording_name: string;
+  participant_name: string;
+  group?: string | null;
+  image_name?: string | null;
+  sentence?: string | null;
+  pair_duration_seconds?: number | null;
+  mp4_duration_seconds?: number | null;
+  png_duration_seconds?: number | null;
 }

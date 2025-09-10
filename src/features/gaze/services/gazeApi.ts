@@ -43,6 +43,7 @@ const CatalogRowSchema: z.ZodType<CatalogRow> = z
     test_name: z.string(),
     sentence: z.string().nullable().optional(),
     group: z.string().nullable().optional(),
+    self_AOIs: z.string().nullable().optional(),
     correct_AOIs: z.string().nullable().optional(),
     potentially_correct_AOIs: z.string().nullable().optional(),
     incorrect_AOIs: z.string().nullable().optional(),

@@ -50,6 +50,11 @@ const navigationItems = [
     icon: Users
   },
   {
+    title: "Data Toggle",
+    url: "/data-toggle",
+    icon: Layout
+  },
+  {
     title: "Settings",
     url: "/settings",
     icon: Settings

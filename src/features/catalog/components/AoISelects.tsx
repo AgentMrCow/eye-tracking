@@ -44,7 +44,7 @@ export default function AoISelects(p: Props) {
           <ChevronDown class="w-4 h-4 opacity-70" />
         </DropdownMenuTrigger>
         <DropdownMenuContent class="w-[420px] max-h-80 overflow-y-auto">
-          <DropdownMenuLabel>Count as “blue”</DropdownMenuLabel>
+          <DropdownMenuLabel>Count as Blue</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <For each={ALL_AOI_KEYS}>
             {(k) => (
@@ -55,7 +55,7 @@ export default function AoISelects(p: Props) {
                   if (v) next.add(k);
                   else next.delete(k);
                   const arr = Array.from(next);
-                  if (!arr.length) return; // require ≥1
+                  if (!arr.length) return; // require at least one key
                   p.setBlueKeys(arr);
                 }}
               >
@@ -81,11 +81,7 @@ export default function AoISelects(p: Props) {
           <DropdownMenuItem onSelect={() => { p.setRedCustom(false); }}>
             Auto (remaining)
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => p.setRedCustom(true)}>
-            Custom selection…
-          </DropdownMenuItem>
-
-          <Show when={p.redCustom}>
+          <DropdownMenuItem onSelect={() => p.setRedCustom(true)}>Custom selection</DropdownMenuItem>
             <>
               <DropdownMenuSeparator />
               <For each={ALL_AOI_KEYS}>
