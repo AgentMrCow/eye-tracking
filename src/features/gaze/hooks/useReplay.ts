@@ -1,4 +1,5 @@
-import { createMemo, createSignal, onCleanup } from "solid-js";
+import { createMemo, createSignal } from "solid-js";
+import { usePlayback } from "@/shared/hooks/usePlayback";
 import { timeColor } from "../utils";
 import type { GazeData, WordWindow } from "../types";
 
@@ -9,36 +10,8 @@ export function useReplay(params: () => {
   imgEl: HTMLImageElement | null;
   canvasEl: HTMLCanvasElement | null;
 }) {
-  const [isPlaying, setIsPlaying] = createSignal(false);
-  const [curTime, setCurTime] = createSignal(0);
-  const [duration, setDuration] = createSignal(0);
   const [ready, setReady] = createSignal(false);
   const [winPctValid, setWinPctValid] = createSignal(0);
-  let raf = 0; let playStart = 0;
-
-  const replayPoints = createMemo(() => {
-    const g = params().gaze;
-    const base = params().baseMs;
-
-    // Build the points (still filtering for drawing)
-    const pts = g
-      .filter(d => d.gaze_x !== null && d.gaze_y !== null && d.box_name !== "missing" && d.box_name !== "out_of_screen")
-      .map(d => ({ t: (+new Date(d.timestamp) - base) / 1000, x: d.gaze_x!, y: d.gaze_y! }));
-
-    // Compute duration from the *full* time range, not just the filtered list
-    if (g.length) {
-      const first = +new Date(g[0].timestamp);
-      const last  = +new Date(g[g.length - 1].timestamp);
-      setDuration(Math.max(0, (last - first) / 1000));
-      setCurTime(0);
-      setReady(true);
-    } else {
-      setReady(false);
-      setDuration(0);
-    }
-
-    return pts;
-  });
 
   function drawFrame(sec: number) {
     // window validity
@@ -73,27 +46,46 @@ export function useReplay(params: () => {
     }
   }
 
-  function play() {
+  const {
+    isPlaying,
+    play,
+    pause,
+    stop,
+    scrub,
+    duration,
+    setDuration,
+    playSec: curTime,
+    setPlaySec: setCurTime,
+  } = usePlayback({ onFrame: drawFrame });
+
+  const replayPoints = createMemo(() => {
+    const g = params().gaze;
+    const base = params().baseMs;
+
+    // Build the points (still filtering for drawing)
+    const pts = g
+      .filter(d => d.gaze_x !== null && d.gaze_y !== null && d.box_name !== "missing" && d.box_name !== "out_of_screen")
+      .map(d => ({ t: (+new Date(d.timestamp) - base) / 1000, x: d.gaze_x!, y: d.gaze_y! }));
+
+    // Compute duration from the *full* time range, not just the filtered list
+    if (g.length) {
+      const first = +new Date(g[0].timestamp);
+      const last  = +new Date(g[g.length - 1].timestamp);
+      setDuration(Math.max(0, (last - first) / 1000));
+      setCurTime(0);
+      setReady(true);
+    } else {
+      setReady(false);
+      setDuration(0);
+    }
+
+    return pts;
+  });
+
+  function playGuarded() {
     if (!ready()) return;
-    playStart = performance.now() - curTime() * 1000;
-    setIsPlaying(true);
-    loop();
-  }
-  function pause() { setIsPlaying(false); cancelAnimationFrame(raf); }
-  function stop()  { pause(); setCurTime(0); drawFrame(0); }
-  function loop()  {
-    if (!isPlaying()) return;
-    const t = (performance.now() - playStart) / 1000;
-    if (t >= duration()) { stop(); return; }
-    setCurTime(t); drawFrame(t); raf = requestAnimationFrame(loop);
-  }
-  function scrub(v: number) {
-    setCurTime(v);
-    if (!isPlaying()) drawFrame(v);
-    else playStart = performance.now() - v * 1000;
+    play();
   }
 
-  onCleanup(() => cancelAnimationFrame(raf));
-
-  return { isPlaying, play, pause, stop, scrub, duration, curTime, ready, winPctValid, drawFrame };
+  return { isPlaying, play: playGuarded, pause, stop, scrub, duration, curTime, ready, winPctValid, drawFrame };
 }

@@ -31,3 +31,11 @@ export interface TimelineRecording {
   timeline: string;
   recording: string;
 }
+
+export interface WordWindow {
+  chinese_word: string;
+  start_sec: number;
+  end_sec: number;
+  test_name: string;
+  timeline: string;
+}

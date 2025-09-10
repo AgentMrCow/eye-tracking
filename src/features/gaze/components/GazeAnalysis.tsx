@@ -35,13 +35,6 @@ export default function GazeAnalysis() {
     return w?.chinese_word ?? null;
   });
 
-  const currentTestName = createMemo(() => {
-    const sel = Q.selectedTest()?.value?.trim();
-    if (sel) return sel;
-    const g = Q.gaze();
-    return g.length ? (g[0] as any).test_name?.toString()?.trim() ?? null : null;
-  });
-
   const testHasSetSizes = createMemo<Record<MetaKey, number>>(() => {
     const row = Q.catalogRowForSelectedTest();
     const primary = row ? {
