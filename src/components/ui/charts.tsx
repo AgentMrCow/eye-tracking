@@ -93,7 +93,7 @@ const BaseChart: Component<ChartProps> = (rawProps) => {
     init();
 
     const refresh = () => chart()?.resize();
-    const revive  = () => chart()?.update();
+    const revive  = () => { chart()?.resize(); chart()?.update(); };
 
     window.addEventListener("resize", refresh);
     document.addEventListener("visibilitychange", revive);
