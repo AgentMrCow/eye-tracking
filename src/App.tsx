@@ -16,6 +16,9 @@ const CatalogCompare = lazy(() =>
 const DataTogglePanel = lazy(() =>
   import("@/features/toggles").then(m => ({ default: m.DataTogglePanel }))
 );
+const Dashboard = lazy(() =>
+  import("@/features/dashboard").then(m => ({ default: m.Dashboard }))
+);
 const NotFound    = lazy(() =>
   import("@/components/not-found").then(m => ({ default: m.default }))
 );
@@ -40,15 +43,15 @@ export default function App() {
   return (
     <Router>
       <Route path="/" component={Layout}>
-        <Route path="/" component={GazeAnalysis} />
+        <Route path="/" component={Dashboard} />
         <Route path="/gaze" component={GazeAnalysis} />
         {/* NEW page */}
         <Route path="/compare" component={CatalogCompare} />
         <Route path="/data-toggle" component={DataTogglePanel} />
-        {/* keep existing placeholders pointing to gaze until you split them */}
-        <Route path="/stats" component={GazeAnalysis} />
-        <Route path="/participants" component={GazeAnalysis} />
-        <Route path="/settings" component={GazeAnalysis} />
+        {/* dedicated pages */}
+        <Route path="/stats" component={lazy(() => import("@/features/stats").then(m => ({ default: m.StatsPage })))} />
+        <Route path="/participants" component={lazy(() => import("@/features/participants").then(m => ({ default: m.ParticipantsPage })))} />
+        <Route path="/settings" component={lazy(() => import("@/features/settings").then(m => ({ default: m.SettingsPage })))} />
         {/* Catch-all route for 404 */}
         <Route path="*" component={NotFound} />
       </Route>

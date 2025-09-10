@@ -188,7 +188,7 @@ export default function TestsSearchTable() {
         </label>
         <Button variant="outline" onClick={() => table.resetSorting()}>Reset sort</Button>
         <DropdownMenu placement="bottom-end">
-          <DropdownMenuTrigger as={Button<"button">} variant="outline" class="ml-auto">
+          <DropdownMenuTrigger as={Button} variant="outline" class="ml-auto">
             Columns
           </DropdownMenuTrigger>
           <DropdownMenuContent>

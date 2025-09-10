@@ -1,7 +1,7 @@
 // src/shared/tauriClient.ts
 import { invoke } from "@tauri-apps/api/core";
 import { withLoading } from "@/shared/loading";
-import type { StaticData } from "@/shared/type";
+import type { StaticData, RowMap } from "@/shared/type";
 import type { DisabledSlice, SearchTestRow, SearchSliceRow } from "@/shared/type";
 
 /** cache StaticData once per app run */
@@ -117,3 +117,10 @@ export async function searchSlicesRaw(params: { testName?: string; participants?
   const t = params.testName ?? null;
   return withLoading(invoke("search_slices", { test_name: t, testName: t, participants: params.participants ?? [] }));
 }
+
+// participants table (full rows)
+export async function getParticipantsTableRaw(): Promise<RowMap[]> {
+  return withLoading(invoke("get_participants"));
+}
+
+// (dedupe guard) — function defined once
