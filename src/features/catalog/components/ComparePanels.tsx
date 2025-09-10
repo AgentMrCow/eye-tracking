@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
 import { NumberField, NumberFieldInput } from "@/components/ui/number-field";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart } from "@/components/ui/charts";
 import type { BoxTypes, TimelineRecording, WordWindow } from "../types";
 import { getTestImage, getTimelineRecordings, getWordWindows } from "../services/catalogApi";
+import { getStatic } from "@/shared/tauriClient";
 import { Chart as ChartJS, type ChartOptions } from "chart.js";
 import { timeColor } from "../utils";
 
@@ -56,6 +57,75 @@ export default function ComparePanels(p: Props) {
   const [selTest2, setSelTest2] = createSignal<string>("");
   const [selPart2, setSelPart2] = createSignal<string>("");
 
+  const [mapTestsForPart, setMapTestsForPart] = createSignal<Record<string, string[]>>({});
+  const [mapPartsForTest, setMapPartsForTest] = createSignal<Record<string, string[]>>({});
+
+  onMount(async () => {
+    const s = await getStatic().catch(() => null as any);
+    if (s) {
+      setMapTestsForPart((s.tests_by_participant as Record<string, string[]>) || {});
+      setMapPartsForTest((s.participants_by_test as Record<string, string[]>) || {});
+    }
+  });
+
+  const testOpts1 = createMemo(() => {
+    const part = selPart1();
+    const base = p.testNames;
+    if (!part) return base;
+    const allowed = mapTestsForPart()[part] || [];
+    const set = new Set(allowed.map(v => v?.trim?.() ?? v));
+    return base.filter(t => set.has(t?.trim?.() ?? t));
+  });
+  const partOpts1 = createMemo(() => {
+    const test = selTest1();
+    const base = p.participants;
+    if (!test) return base;
+    const allowed = mapPartsForTest()[test] || [];
+    const set = new Set(allowed.map(v => v?.trim?.() ?? v));
+    return base.filter(x => set.has(x?.trim?.() ?? x));
+  });
+  const testOpts2 = createMemo(() => {
+    const part = selPart2();
+    const base = p.testNames;
+    if (!part) return base;
+    const allowed = mapTestsForPart()[part] || [];
+    const set = new Set(allowed.map(v => v?.trim?.() ?? v));
+    return base.filter(t => set.has(t?.trim?.() ?? t));
+  });
+  const partOpts2 = createMemo(() => {
+    const test = selTest2();
+    const base = p.participants;
+    if (!test) return base;
+    const allowed = mapPartsForTest()[test] || [];
+    const set = new Set(allowed.map(v => v?.trim?.() ?? v));
+    return base.filter(x => set.has(x?.trim?.() ?? x));
+  });
+
+  createEffect(() => {
+    const list = testOpts1();
+    const set = new Set(list.map(v => v?.trim?.() ?? v));
+    const sel = selTest1();
+    if (sel && !set.has(sel?.trim?.() ?? sel)) setSelTest1("");
+  });
+  createEffect(() => {
+    const list = partOpts1();
+    const set = new Set(list.map(v => v?.trim?.() ?? v));
+    const sel = selPart1();
+    if (sel && !set.has(sel?.trim?.() ?? sel)) setSelPart1("");
+  });
+  createEffect(() => {
+    const list = testOpts2();
+    const set = new Set(list.map(v => v?.trim?.() ?? v));
+    const sel = selTest2();
+    if (sel && !set.has(sel?.trim?.() ?? sel)) setSelTest2("");
+  });
+  createEffect(() => {
+    const list = partOpts2();
+    const set = new Set(list.map(v => v?.trim?.() ?? v));
+    const sel = selPart2();
+    if (sel && !set.has(sel?.trim?.() ?? sel)) setSelPart2("");
+  });
+
   const [combos1, setCombos1] = createSignal<TimelineRecording[]>([]);
   const timelines1 = createMemo(() => Array.from(new Set(combos1().map(c => c.timeline))));
   const [selTimeline1, setSelTimeline1] = createSignal<string>("");
@@ -67,6 +137,11 @@ export default function ComparePanels(p: Props) {
   const [selTimeline2, setSelTimeline2] = createSignal<string>("");
   const recOpts2 = createMemo(() => combos2().filter(c => c.timeline === selTimeline2()).map(c => c.recording));
   const [selRecording2, setSelRecording2] = createSignal<string>("");
+
+  const needsChoice1 = createMemo(() => combos1().length > 1 && (!selTimeline1() || !selRecording1()));
+  const needsChoice2 = createMemo(() => combos2().length > 1 && (!selTimeline2() || !selRecording2()));
+  const hasSel1 = createMemo(() => !!selTest1() && !!selPart1());
+  const hasSel2 = createMemo(() => !!selTest2() && !!selPart2());
 
   // fetch sessions
   createEffect(async () => {
@@ -126,24 +201,30 @@ export default function ComparePanels(p: Props) {
   });
 
   // series
-  const series1 = p.useSeries(() => ({
-    testName: selTest1() || null,
-    participant: selPart1() || null,
-    binMs: binMs(),
-    invalidCats: p.invalidCats,
-    ...p.getSetsFor(selTest1() || "") ,
-    timeline: selTimeline1() || undefined,
-    recording: selRecording1() || undefined,
-  }));
-  const series2 = p.useSeries(() => ({
-    testName: selTest2() || null,
-    participant: selPart2() || null,
-    binMs: binMs(),
-    invalidCats: p.invalidCats,
-    ...p.getSetsFor(selTest2() || ""),
-    timeline: selTimeline2() || undefined,
-    recording: selRecording2() || undefined,
-  }));
+  const series1 = p.useSeries(() => {
+    const allow = hasSel1() && !needsChoice1();
+    return {
+      testName: allow ? selTest1() : null,
+      participant: allow ? selPart1() : null,
+      binMs: binMs(),
+      invalidCats: p.invalidCats,
+      ...p.getSetsFor(selTest1() || ""),
+      timeline: allow ? selTimeline1() || undefined : null,
+      recording: allow ? selRecording1() || undefined : null,
+    };
+  });
+  const series2 = p.useSeries(() => {
+    const allow = hasSel2() && !needsChoice2();
+    return {
+      testName: allow ? selTest2() : null,
+      participant: allow ? selPart2() : null,
+      binMs: binMs(),
+      invalidCats: p.invalidCats,
+      ...p.getSetsFor(selTest2() || ""),
+      timeline: allow ? selTimeline2() || undefined : null,
+      recording: allow ? selRecording2() || undefined : null,
+    };
+  });
 
   // duration sync
   createEffect(() => {
@@ -282,13 +363,13 @@ export default function ComparePanels(p: Props) {
           <div class="space-y-3">
             <div class="flex flex-wrap items-center gap-2">
               <Select value={selTest1()} onChange={(v) => { setSelTest1(v || ""); setSelTimeline1(""); setSelRecording1(""); }}
-                      options={p.testNames} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
+                      options={testOpts1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selTest1() || "Select test…"}</SelectValue></SelectTrigger>
                 <SelectContent />
               </Select>
 
               <Select value={selPart1()} onChange={(v) => { setSelPart1(v || ""); setSelTimeline1(""); setSelRecording1(""); }}
-                      options={p.participants} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
+                      options={partOpts1()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selPart1() || "Select participant…"}</SelectValue></SelectTrigger>
                 <SelectContent />
               </Select>
@@ -308,41 +389,47 @@ export default function ComparePanels(p: Props) {
               </Show>
             </div>
 
-            <Show when={combos1().length <= 1 || (selTimeline1() && selRecording1())} fallback={
-              <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Multiple sessions found. Pick <b>timeline</b> and <b>recording</b>.</div>
+            <Show when={hasSel1()} fallback={
+              <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Select <b>test</b> and <b>participant</b>.</div>
             }>
-              <div class="h-[360px] rounded border">
-                <Show when={viz1().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
-                  <LineChart data={viz1()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
-                </Show>
-              </div>
-            </Show>
+              <Show when={!needsChoice1()} fallback={
+                <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Multiple sessions found. Pick <b>timeline</b> and <b>recording</b>.</div>
+              }>
+                <>
+                  <div class="h-[360px] rounded border">
+                    <Show when={viz1().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
+                      <LineChart data={viz1()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
+                    </Show>
+                  </div>
 
-            {/* Stimulus + overlay */}
-            <StimulusPane
-              imgUrl={imgUrl1()}
-              currentWord={currentWord1()}
-              onImg={(img, cvs) => {
-                // wire refs
-                img1El = img; canvas1El = cvs;
-                if (!canvas1El || !img1El) return;
-                canvas1El.width = img1El.clientWidth; canvas1El.height = img1El.clientHeight;
-                drawFrameLeft(p.playSec());
-              }}
-            />
+                  {/* Stimulus + overlay */}
+                  <StimulusPane
+                    imgUrl={imgUrl1()}
+                    currentWord={currentWord1()}
+                    onImg={(img, cvs) => {
+                      // wire refs
+                      img1El = img; canvas1El = cvs;
+                      if (!canvas1El || !img1El) return;
+                      canvas1El.width = img1El.clientWidth; canvas1El.height = img1El.clientHeight;
+                      drawFrameLeft(p.playSec());
+                    }}
+                  />
+                </>
+              </Show>
+            </Show>
           </div>
 
           {/* Right */}
           <div class="space-y-3">
             <div class="flex flex-wrap items-center gap-2">
               <Select value={selTest2()} onChange={(v) => { setSelTest2(v || ""); setSelTimeline2(""); setSelRecording2(""); }}
-                      options={p.testNames} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
+                      options={testOpts2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selTest2() || "Select test…"}</SelectValue></SelectTrigger>
                 <SelectContent />
               </Select>
 
               <Select value={selPart2()} onChange={(v) => { setSelPart2(v || ""); setSelTimeline2(""); setSelRecording2(""); }}
-                      options={p.participants} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
+                      options={partOpts2()} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
                 <SelectTrigger class="w-60"><SelectValue>{selPart2() || "Select participant…"}</SelectValue></SelectTrigger>
                 <SelectContent />
               </Select>
@@ -362,26 +449,32 @@ export default function ComparePanels(p: Props) {
               </Show>
             </div>
 
-            <Show when={combos2().length <= 1 || (selTimeline2() && selRecording2())} fallback={
-              <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Multiple sessions found. Pick <b>timeline</b> and <b>recording</b>.</div>
+            <Show when={hasSel2()} fallback={
+              <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Select <b>test</b> and <b>participant</b>.</div>
             }>
-              <div class="h-[360px] rounded border">
-                <Show when={viz2().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
-                  <LineChart data={viz2()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
-                </Show>
-              </div>
-            </Show>
+              <Show when={!needsChoice2()} fallback={
+                <div class="rounded border px-3 py-2 text-xs text-amber-700 bg-amber-50">Multiple sessions found. Pick <b>timeline</b> and <b>recording</b>.</div>
+              }>
+                <>
+                  <div class="h-[360px] rounded border">
+                    <Show when={viz2().datasets.length} fallback={<div class="h-full grid place-items-center text-sm text-muted-foreground">No data</div>}>
+                      <LineChart data={viz2()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
+                    </Show>
+                  </div>
 
-            <StimulusPane
-              imgUrl={imgUrl2()}
-              currentWord={currentWord2()}
-              onImg={(img, cvs) => {
-                img2El = img; canvas2El = cvs;
-                if (!canvas2El || !img2El) return;
-                canvas2El.width = img2El.clientWidth; canvas2El.height = img2El.clientHeight;
-                drawFrameRight(p.playSec());
-              }}
-            />
+                  <StimulusPane
+                    imgUrl={imgUrl2()}
+                    currentWord={currentWord2()}
+                    onImg={(img, cvs) => {
+                      img2El = img; canvas2El = cvs;
+                      if (!canvas2El || !img2El) return;
+                      canvas2El.width = img2El.clientWidth; canvas2El.height = img2El.clientHeight;
+                      drawFrameRight(p.playSec());
+                    }}
+                  />
+                </>
+              </Show>
+            </Show>
           </div>
         </div>
       </CardContent>
