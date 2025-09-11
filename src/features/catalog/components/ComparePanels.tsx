@@ -1,4 +1,4 @@
-﻿import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js";
 import { NumberField, NumberFieldInput } from "@/components/ui/number-field";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -146,18 +146,21 @@ export default function ComparePanels(p: Props) {
   const hasSel1 = createMemo(() => !!selTest1() && !!selPart1());
   const hasSel2 = createMemo(() => !!selTest2() && !!selPart2());
 
-  // fetch sessions
+  // fetch sessions with race condition protection
+  let sessionsReq1 = 0, sessionsReq2 = 0;
   createEffect(async () => {
     const t = selTest1(), part = selPart1();
     if (!t || !part) { setCombos1([]); setSelTimeline1(""); setSelRecording1(""); return; }
-    const list = await getTimelineRecordings({ testName: t, participants: [part] });
-    setCombos1(list);
+    const myReq = ++sessionsReq1;
+    const list = await getTimelineRecordings({ testName: t, participants: [part] }).catch(() => []);
+    if (myReq === sessionsReq1) setCombos1(list);
   });
   createEffect(async () => {
     const t = selTest2(), part = selPart2();
     if (!t || !part) { setCombos2([]); setSelTimeline2(""); setSelRecording2(""); return; }
-    const list = await getTimelineRecordings({ testName: t, participants: [part] });
-    setCombos2(list);
+    const myReq = ++sessionsReq2;
+    const list = await getTimelineRecordings({ testName: t, participants: [part] }).catch(() => []);
+    if (myReq === sessionsReq2) setCombos2(list);
   });
 
   // re-enable auto view sync on context changes (test/participant/timeline/recording)
@@ -550,7 +553,7 @@ function StimulusPane(props: { imgUrl: string | null; currentWord: string | null
               }
               props.onImg(img, cvs);
             }}
-            class="max-h[240px] max-w-full object-contain rounded-md border"
+            class="max-h-[240px] max-w-full object-contain rounded-md border"
           />
           <canvas class="absolute inset-0 pointer-events-none" />
         </div>

@@ -84,38 +84,38 @@ export default function AdvancedComparePage() {
     try {
       const cat = await getAllCatalog();
       setCatalog(cat);
-      console.log('Loaded catalog:', cat.length, 'entries');
+      // console.log('Loaded catalog:', cat.length, 'entries');
       
       const g = await getStatic().catch((error) => {
         console.error('Failed to get static data:', error);
         return null as any;
       });
 
-  // Debug watchers
-  createEffect(() => {
-    const v = selTests();
-    console.log('[AdvancedCompare] selTests changed:', v.length, v.slice(0,5), '...');
-  });
-  createEffect(() => {
-    const v = participantOptions();
-    console.log('[AdvancedCompare] participantOptions changed:', v.length);
-  });
-  createEffect(() => {
-    const v = selParticipants();
-    console.log('[AdvancedCompare] selParticipants changed:', v.length);
-  });
+  // Debug watchers (disabled for production)
+  // createEffect(() => {
+  //   const v = selTests();
+  //   console.log('[AdvancedCompare] selTests changed:', v.length, v.slice(0,5), '...');
+  // });
+  // createEffect(() => {
+  //   const v = participantOptions();
+  //   console.log('[AdvancedCompare] participantOptions changed:', v.length);
+  // });
+  // createEffect(() => {
+  //   const v = selParticipants();
+  //   console.log('[AdvancedCompare] selParticipants changed:', v.length);
+  // });
       
       const partsByTestData = (g?.participants_by_test as Record<string, string[]>) || {};
       setPartsByTest(partsByTestData);
-      console.log('Loaded participants by test:', partsByTestData);
+      // console.log('Loaded participants by test:', partsByTestData);
       
       const allParticipants = await getParticipants();
       setParticipants(allParticipants);
-      console.log('Loaded global participants:', allParticipants);
+      // console.log('Loaded global participants:', allParticipants);
       
       const testNames = (g?.test_names as string[]) || [];
       setAllTestNames(testNames);
-      console.log('Loaded test names:', testNames);
+      // console.log('Loaded test names:', testNames);
     // QAC map (participants table)
     const ptab = await getParticipantsTableRaw().catch(() => [] as any[]);
     const map: Record<string, boolean> = {};
@@ -153,7 +153,7 @@ export default function AdvancedComparePage() {
         return [] as SearchSliceRow[];
       });
       if (rows.length) {
-        console.log('Loaded search slices:', rows.length, 'rows');
+        // console.log('Loaded search slices:', rows.length, 'rows');
         // IMPORTANT: avoid reading partsByTest() here to prevent effect self-dependency loops
         const base = { ...partsByTestData };
         const map = new Map<string, Set<string>>();
@@ -168,7 +168,7 @@ export default function AdvancedComparePage() {
         const obj: Record<string, string[]> = {};
         map.forEach((set, key) => obj[key] = Array.from(set));
         setPartsByTest(obj);
-        console.log('Updated participants by test with search slices:', obj);
+        // console.log('Updated participants by test with search slices:', obj);
       }
     } catch (error) {
       console.error('Error processing search slices:', error);
@@ -251,19 +251,19 @@ export default function AdvancedComparePage() {
     const all = selTests().flatMap(tt => partsByTest()[tt] || []);
     let uniq = Array.from(new Set(all));
     
-    console.log(`Current test: ${t}, all participants from selected tests:`, uniq);
+    // console.log(`Current test: ${t}, all participants from selected tests:`, uniq);
     
     if (qacFilter() === "qac") uniq = uniq.filter(isQac);
     else if (qacFilter() === "nonqac") uniq = uniq.filter((p) => !isQac(p));
     
-    console.log(`After QAC filter '${qacFilter()}':`, uniq);
+    // console.log(`After QAC filter '${qacFilter()}':`, uniq);
     
     // Auto-select all participants when they become available
     if (uniq.length > 0) {
       const currentSelected = selParticipants();
       // Always auto-select all available participants when the list changes
       if (currentSelected.length === 0) {
-        console.log('Auto-selecting participants:', uniq);
+        // console.log('Auto-selecting participants:', uniq);
         setSelParticipants(uniq);
       }
     }
@@ -277,7 +277,7 @@ export default function AdvancedComparePage() {
     
     // If no participants are selected and participants are available, select all (unless user explicitly cleared)
     if (currentSelected.length === 0 && availableParticipants.length > 0 && !userCleared) {
-      console.log('Auto-selecting all available participants:', availableParticipants);
+      // console.log('Auto-selecting all available participants:', availableParticipants);
       setSelParticipants(availableParticipants);
     }
     // If some participants are selected but they're no longer available, filter them out
@@ -341,11 +341,11 @@ export default function AdvancedComparePage() {
     // Fetch participants for each test (non-reactive)
     testsToFetch.forEach(async (testName) => {
       try {
-        console.log(`Fetching participants for test: ${testName}`);
+        // console.log(`Fetching participants for test: ${testName}`);
         const fetched = await getParticipantsForTest(testName);
         
         if (fetched && fetched.length > 0) {
-          console.log(`Fetched ${fetched.length} participants for test ${testName}:`, fetched);
+          // console.log(`Fetched ${fetched.length} participants for test ${testName}:`, fetched);
           setPartsByTest(prev => {
             const prevArr = prev[testName] || [];
             // Avoid redundant state updates

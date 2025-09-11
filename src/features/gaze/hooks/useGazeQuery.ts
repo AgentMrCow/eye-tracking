@@ -194,9 +194,12 @@ export function useGazeQuery() {
   });
 
   /* AOI color overrides */
+  let aoiMapReq = 0;
   createEffect(async () => {
     if (!selectedTest()) return;
+    const myReq = ++aoiMapReq;
     const rows = await getAoiMap(selectedTest()!.value).catch(() => []);
+    if (myReq !== aoiMapReq) return; // Prevent stale updates
     const m = { ...DEFAULT_COLORS };
     rows.forEach(r => {
       if (r.rgb_hex) {
@@ -208,10 +211,13 @@ export function useGazeQuery() {
   });
 
   /* sessions for selection */
+  let sessionsReq = 0;
   createEffect(async () => {
     setPairs([]); setSelectedTimeline(null); setSelectedRecording(null);
     if (!selectedTest() || !selectedPart()) return;
+    const myReq = ++sessionsReq;
     const out = await getTimelineRecordings({ testName: selectedTest()!.value, participants: [selectedPart()!.value] }).catch(() => []);
+    if (myReq !== sessionsReq) return; // Prevent stale updates
     setPairs(out);
     const ts = Array.from(new Set(out.map(p => p.timeline)));
     const rs = Array.from(new Set(out.map(p => p.recording)));
@@ -239,13 +245,18 @@ export function useGazeQuery() {
   });
 
   /* image + windows */
+  let imageReq = 0, windowsReq = 0;
   createEffect(async () => {
     if (!selectedTest()) { setTestImgB64(null); return; }
-    setTestImgB64(await getTestImage({ testName: selectedTest()!.value, timeline: selectedTimeline() }).catch(() => null));
+    const myReq = ++imageReq;
+    const img = await getTestImage({ testName: selectedTest()!.value, timeline: selectedTimeline() }).catch(() => null);
+    if (myReq === imageReq) setTestImgB64(img);
   });
   createEffect(async () => {
     if (!selectedTest()) return setWordWin([]);
-    setWordWin(await getWordWindows({ testName: selectedTest()!.value, timeline: selectedTimeline() }).catch(() => []));
+    const myReq = ++windowsReq;
+    const windows = await getWordWindows({ testName: selectedTest()!.value, timeline: selectedTimeline() }).catch(() => []);
+    if (myReq === windowsReq) setWordWin(windows);
   });
 
   /* fetch gaze + stats */
@@ -253,16 +264,20 @@ export function useGazeQuery() {
     pairs().length > 1 && (!selectedTimeline() || !selectedRecording())
   );
 
+  let gazeReq = 0;
   createEffect(async () => {
     if (!selectedTest() || !selectedPart()) return;
     if (needsChoice()) { setGaze([]); setBoxStats({}); setRows([]); return; }
 
+    const myReq = ++gazeReq;
     const data = await getGazeData({
       testName: selectedTest()!.value,
       participants: [selectedPart()!.value],
       timeline: selectedTimeline(),
       recording: selectedRecording(),
     }).catch(() => []);
+
+    if (myReq !== gazeReq) return; // Prevent stale updates
 
     const rec = selectedRecording() ?? (data.length ? (data[0] as any).recording || (data[0] as any).recording_name || (data[0] as any)["Recording name"] : null);
     setRecordingName(rec ?? null);
@@ -279,6 +294,9 @@ export function useGazeQuery() {
       timeline: selectedTimeline(),
       recording: selectedRecording(),
     }).catch(() => ({ box_percentages: {} as Record<string, number> }));
+    
+    if (myReq !== gazeReq) return; // Check again after second async call
+    
     setBoxStats(blocked ? {} : stats.box_percentages);
     setStatsWhole(blocked ? { pct_including_missing: 0, pct_excluding_missing: 0, pct_excluding_missing_oob: 0 }
                            : calcWholeStats(data));
