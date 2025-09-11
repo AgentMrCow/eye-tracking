@@ -25,6 +25,7 @@ export default function AdvancedComparePage() {
   const [isQacMap, setIsQacMap] = createSignal<Record<string, boolean>>({});
   const [partsByTest, setPartsByTest] = createSignal<Record<string, string[]>>({});
   const [selParticipants, setSelParticipants] = createSignal<string[]>([]);
+  const [userClearedParticipants, setUserClearedParticipants] = createSignal(false);
   const [catalogRow, setCatalogRow] = createSignal<any>(null);
   const [wordWin, setWordWin] = createSignal<{ chinese_word: string; start_sec: number; end_sec: number }[]>([]);
 
@@ -272,9 +273,10 @@ export default function AdvancedComparePage() {
   createEffect(() => {
     const availableParticipants = participantOptions();
     const currentSelected = selParticipants();
+    const userCleared = userClearedParticipants();
     
-    // If no participants are selected and participants are available, select all
-    if (currentSelected.length === 0 && availableParticipants.length > 0) {
+    // If no participants are selected and participants are available, select all (unless user explicitly cleared)
+    if (currentSelected.length === 0 && availableParticipants.length > 0 && !userCleared) {
       console.log('Auto-selecting all available participants:', availableParticipants);
       setSelParticipants(availableParticipants);
     }
@@ -502,11 +504,20 @@ export default function AdvancedComparePage() {
               <div class="flex items-center justify-between">
                 <span class="text-xs text-muted-foreground">Participants ({participantOptions().length} available)</span>
                 <div class="flex gap-1">
-                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => setSelParticipants(participantOptions())}>All</Button>
-                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => setSelParticipants([])}>None</Button>
+                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => {
+                    setUserClearedParticipants(false);
+                    setSelParticipants(participantOptions());
+                  }}>All</Button>
+                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => {
+                    setUserClearedParticipants(true);
+                    setSelParticipants([]);
+                  }}>None</Button>
                 </div>
               </div>
-              <Select<string> multiple value={selParticipants()} onChange={setSelParticipants} options={participantOptions()}
+              <Select<string> multiple value={selParticipants()} onChange={(newVal) => {
+                setUserClearedParticipants(false);
+                setSelParticipants(newVal);
+              }} options={participantOptions()}
                 itemComponent={(pp) => {
                   const name = pp.item.rawValue as string;
                   const qmap = isQacMap();
