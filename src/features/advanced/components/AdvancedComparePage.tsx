@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, untrack, onMount } from "solid-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -71,13 +71,50 @@ export default function AdvancedComparePage() {
   const [aggMode, setAggMode] = createSignal<"mean" | "median" | "weighted">("mean");
   const [multiTest, setMultiTest] = createSignal(false);
 
-  createEffect(async () => {
-    const cat = await getAllCatalog();
-    setCatalog(cat);
-    const g = await getStatic().catch(() => null as any);
-    setPartsByTest((g?.participants_by_test as Record<string, string[]>) || {});
-    setParticipants(await getParticipants());
-    setAllTestNames((g?.test_names as string[]) || []);
+  // Helper: compare arrays as sets (order-insensitive)
+  const sameSet = (a: string[], b: string[]) => {
+    if (a.length !== b.length) return false;
+    const s = new Set(a);
+    for (const x of b) if (!s.has(x)) return false;
+    return true;
+  };
+
+  onMount(async () => {
+    try {
+      const cat = await getAllCatalog();
+      setCatalog(cat);
+      console.log('Loaded catalog:', cat.length, 'entries');
+      
+      const g = await getStatic().catch((error) => {
+        console.error('Failed to get static data:', error);
+        return null as any;
+      });
+
+  // Debug watchers
+  createEffect(() => {
+    const v = selTests();
+    console.log('[AdvancedCompare] selTests changed:', v.length, v.slice(0,5), '...');
+  });
+  createEffect(() => {
+    const v = participantOptions();
+    console.log('[AdvancedCompare] participantOptions changed:', v.length);
+  });
+  createEffect(() => {
+    const v = selParticipants();
+    console.log('[AdvancedCompare] selParticipants changed:', v.length);
+  });
+      
+      const partsByTestData = (g?.participants_by_test as Record<string, string[]>) || {};
+      setPartsByTest(partsByTestData);
+      console.log('Loaded participants by test:', partsByTestData);
+      
+      const allParticipants = await getParticipants();
+      setParticipants(allParticipants);
+      console.log('Loaded global participants:', allParticipants);
+      
+      const testNames = (g?.test_names as string[]) || [];
+      setAllTestNames(testNames);
+      console.log('Loaded test names:', testNames);
     // QAC map (participants table)
     const ptab = await getParticipantsTableRaw().catch(() => [] as any[]);
     const map: Record<string, boolean> = {};
@@ -107,13 +144,19 @@ export default function AdvancedComparePage() {
     setPoss(Array.from(new Set(cat.map(r => r.only_position || "").filter(Boolean))));
     setSeries(Array.from(new Set(cat.map(r => r.series || "").filter(Boolean))));
     setGroups(Array.from(new Set(cat.map(r => r.group || "").filter(Boolean))));
+    
     // Merge participants_by_test from search_slices (always supplement static)
     try {
-      const rows = await searchSlicesRaw().catch(() => [] as SearchSliceRow[]);
+      const rows = await searchSlicesRaw().catch((error) => {
+        console.error('Failed to get search slices:', error);
+        return [] as SearchSliceRow[];
+      });
       if (rows.length) {
-        const base = { ...partsByTest() };
+        console.log('Loaded search slices:', rows.length, 'rows');
+        // IMPORTANT: avoid reading partsByTest() here to prevent effect self-dependency loops
+        const base = { ...partsByTestData };
         const map = new Map<string, Set<string>>();
-        // seed with existing
+        // seed with existing from static data snapshot
         Object.entries(base).forEach(([t, arr]) => map.set(t, new Set(arr)));
         for (const r of rows) {
           const t = r.test_name; const p = r.participant_name;
@@ -124,8 +167,14 @@ export default function AdvancedComparePage() {
         const obj: Record<string, string[]> = {};
         map.forEach((set, key) => obj[key] = Array.from(set));
         setPartsByTest(obj);
+        console.log('Updated participants by test with search slices:', obj);
       }
-    } catch {}
+    } catch (error) {
+      console.error('Error processing search slices:', error);
+    }
+    } catch (error) {
+      console.error('Error in main initialization effect:', error);
+    }
   });
 
   // Load persisted AOI preferences (shared with Catalog Compare)
@@ -172,11 +221,12 @@ export default function AdvancedComparePage() {
   createEffect(() => {
     const ft = filteredTests();
     setTests(ft);
-    // Default/select-all behavior like participants: keep intersection, add new filtered
-    const cur = new Set(selTests());
-    const next = ft.filter(t => cur.has(t));
-    // If nothing selected or filters changed, select all filtered by default
-    setSelTests(next.length ? next : ft);
+    // Keep current selection when filters don't change; only react to filter changes
+    const curArr = untrack(() => selTests());
+    const curSet = new Set(curArr);
+    const next = ft.filter(t => curSet.has(t));
+    const target = next.length ? next : ft;
+    if (!sameSet(target, curArr)) setSelTests(target);
   });
 
   // Derive a current test (first selected) for word anchors and AOI row context
@@ -187,65 +237,132 @@ export default function AdvancedComparePage() {
     function isQac(p: string) { return (p in qmap) ? qmap[p] : true; }
     if (!t) { setCatalogRow(null); setWordWin([]); /* don't thrash selParticipants here */ return; }
     setCatalogRow(catalog().find(r => r.test_name === t) || null);
-    setWordWin(await getWordWindows({ testName: t }).catch(() => []));
+    
+    try {
+      const wordWindows = await getWordWindows({ testName: t });
+      setWordWin(wordWindows || []);
+    } catch (error) {
+      console.error(`Failed to fetch word windows for test ${t}:`, error);
+      setWordWin([]);
+    }
+    
     // default participants = union across selected tests
     const all = selTests().flatMap(tt => partsByTest()[tt] || []);
     let uniq = Array.from(new Set(all));
+    
+    console.log(`Current test: ${t}, all participants from selected tests:`, uniq);
+    
     if (qacFilter() === "qac") uniq = uniq.filter(isQac);
     else if (qacFilter() === "nonqac") uniq = uniq.filter((p) => !isQac(p));
-    // Only auto-select all if user has nothing selected; otherwise keep user's selection
-    // Only auto-select when empty AND we have something to select, to avoid reactive loops
-    if (selParticipants().length === 0 && uniq.length > 0) setSelParticipants(uniq);
+    
+    console.log(`After QAC filter '${qacFilter()}':`, uniq);
+    
+    // Auto-select all participants when they become available
+    if (uniq.length > 0) {
+      const currentSelected = selParticipants();
+      // Always auto-select all available participants when the list changes
+      if (currentSelected.length === 0) {
+        console.log('Auto-selecting participants:', uniq);
+        setSelParticipants(uniq);
+      }
+    }
   });
 
-  // keep selected participants consistent when QAC filter changes
+  // Auto-select participants when participant options change
   createEffect(() => {
-    const qmap = isQacMap();
-    function isQac(p: string) { return (p in qmap) ? qmap[p] : true; }
-    // Allowed participants = union across selected tests (filtered by QAC)
-    const all = selTests().flatMap(t => partsByTest()[t] || []);
-    let allowed = Array.from(new Set(all));
-    if (qacFilter() === "qac") allowed = allowed.filter(isQac);
-    else if (qacFilter() === "nonqac") allowed = allowed.filter(p => !isQac(p));
-    const cur = selParticipants();
-    const next = cur.filter(p => allowed.includes(p));
-    if (next.length !== cur.length) setSelParticipants(next);
+    const availableParticipants = participantOptions();
+    const currentSelected = selParticipants();
+    
+    // If no participants are selected and participants are available, select all
+    if (currentSelected.length === 0 && availableParticipants.length > 0) {
+      console.log('Auto-selecting all available participants:', availableParticipants);
+      setSelParticipants(availableParticipants);
+    }
+    // If some participants are selected but they're no longer available, filter them out
+    else if (currentSelected.length > 0) {
+      const validSelected = currentSelected.filter(p => availableParticipants.includes(p));
+      if (validSelected.length !== currentSelected.length) {
+        setSelParticipants(validSelected);
+      }
+    }
   });
 
   // options shown in the Participants select (test-scoped + QAC filtered)
   const participantOptions = createMemo(() => {
     const qmap = isQacMap();
     function isQac(p: string) { return (p in qmap) ? qmap[p] : true; }
-    const allSel = selTests().flatMap(t => partsByTest()[t] || []);
-    let opts = Array.from(new Set(allSel));
+    const selectedTests = selTests();
+    
+    let opts: string[] = [];
+    
+    if (selectedTests.length > 0) {
+      // Get participants for selected tests
+      const allSel = selectedTests.flatMap(t => partsByTest()[t] || []);
+      opts = Array.from(new Set(allSel));
+    }
+    
     if (!opts.length) {
-      // Prefer union across all known tests from the partsByTest map
+      // Fallback to all participants from partsByTest or global participants
       const allMap = Array.from(new Set(Object.values(partsByTest()).flat()));
       opts = allMap.length ? allMap : participants();
     }
+    
+    // Apply QAC filtering
     if (qacFilter() === "qac") opts = opts.filter(isQac);
     else if (qacFilter() === "nonqac") opts = opts.filter(p => !isQac(p));
-    if (!opts.length) {
-      // last fallback to global list unfiltered so the dropdown isn't blank
-      opts = participants();
-    }
+    
     return opts;
   });
 
-  // Prefetch participants for selected tests if missing from static map
-  createEffect(async () => {
-    const wanted = selTests();
-    if (!wanted.length) return;
-    const cur = partsByTest();
-    let changed = false;
-    const next: Record<string, string[]> = { ...cur };
-    for (const t of wanted) {
-      if (!next[t] || next[t].length === 0) {
-        const fetched = await getParticipantsForTest(t).catch(() => []);
-        if (fetched.length) { next[t] = fetched; changed = true; }
+  // Use a ref to track fetched tests without creating reactive dependencies
+  let fetchedTestsRef = new Set<string>();
+  // Track in-flight requests to avoid concurrent duplicates
+  let inFlightFetchRef = new Set<string>();
+
+  // Prefetch participants (only for current test) to avoid flooding the backend
+  createEffect(() => {
+    const ct = currentTest();
+    if (!ct) return;
+    
+    // Only fetch current test if it doesn't have participants and isn't currently being fetched or fetched already
+    const testsToFetch = [ct].filter(t =>
+      (!partsByTest()[t] || partsByTest()[t].length === 0) &&
+      !inFlightFetchRef.has(t) &&
+      !fetchedTestsRef.has(t)
+    );
+    
+    if (!testsToFetch.length) return;
+    
+    // Mark as in-flight immediately
+    testsToFetch.forEach(t => inFlightFetchRef.add(t));
+    
+    // Fetch participants for each test (non-reactive)
+    testsToFetch.forEach(async (testName) => {
+      try {
+        console.log(`Fetching participants for test: ${testName}`);
+        const fetched = await getParticipantsForTest(testName);
+        
+        if (fetched && fetched.length > 0) {
+          console.log(`Fetched ${fetched.length} participants for test ${testName}:`, fetched);
+          setPartsByTest(prev => {
+            const prevArr = prev[testName] || [];
+            // Avoid redundant state updates
+            if (prevArr.length === fetched.length && prevArr.every((v, i) => v === fetched[i])) return prev;
+            return { ...prev, [testName]: fetched };
+          });
+        } else {
+          console.warn(`No participants found for test ${testName}`);
+          setPartsByTest(prev => ({ ...prev, [testName]: [] }));
+        }
+      } catch (error) {
+        console.error(`Failed to fetch participants for test ${testName}:`, error);
+        setPartsByTest(prev => ({ ...prev, [testName]: [] }));
+      } finally {
+        // Mark as fetched and clear in-flight
+        inFlightFetchRef.delete(testName);
+        fetchedTestsRef.add(testName);
       }
-    }
-    if (changed) setPartsByTest(next);
+    });
   });
 
   // Prefetch sessions per participant and initialize selections (all included)
@@ -353,7 +470,13 @@ export default function AdvancedComparePage() {
         <CardContent class="space-y-4">
           <div class="flex flex-wrap items-end gap-3 mb-2">
             <div class="flex flex-col gap-1">
-              <span class="text-xs text-muted-foreground">Test</span>
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-muted-foreground">Test ({tests().length} available)</span>
+                <div class="flex gap-1">
+                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => setSelTests(tests())}>All</Button>
+                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => setSelTests([])}>None</Button>
+                </div>
+              </div>
               <Select<string> multiple value={selTests()} onChange={setSelTests} options={tests()}
                 itemComponent={(pp) => {
                   const tname = pp.item.rawValue as string;
@@ -371,12 +494,18 @@ export default function AdvancedComparePage() {
                   );
                 }}
               >
-              <SelectTrigger class="w-72"><SelectValue>{selTests().length ? `${selTests().length} selected` : 'Select tests'}</SelectValue></SelectTrigger>
+              <SelectTrigger class="w-72"><span>{selTests().length ? `${selTests().length} selected` : 'No tests selected'}</span></SelectTrigger>
                 <SelectContent class="max-h-60 overflow-y-auto" />
               </Select>
             </div>
             <div class="flex flex-col gap-1">
-              <span class="text-xs text-muted-foreground">Participants</span>
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-muted-foreground">Participants ({participantOptions().length} available)</span>
+                <div class="flex gap-1">
+                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => setSelParticipants(participantOptions())}>All</Button>
+                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => setSelParticipants([])}>None</Button>
+                </div>
+              </div>
               <Select<string> multiple value={selParticipants()} onChange={setSelParticipants} options={participantOptions()}
                 itemComponent={(pp) => {
                   const name = pp.item.rawValue as string;
@@ -392,7 +521,7 @@ export default function AdvancedComparePage() {
                   );
                 }}
               >
-                <SelectTrigger class="w-[420px]"><SelectValue>{selParticipants().length ? `${selParticipants().length} selected` : "Select participants"}</SelectValue></SelectTrigger>
+                <SelectTrigger class="w-[420px]"><span>{selParticipants().length ? `${selParticipants().length} selected` : (participantOptions().length > 0 ? 'No participants selected' : 'No participants available')}</span></SelectTrigger>
                 <SelectContent class="max-h-60 overflow-y-auto" />
               </Select>
             </div>
