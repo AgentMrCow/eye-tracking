@@ -20,6 +20,7 @@ export type TLRec = { timeline: string; recording: string };
 
 export type CatalogRow = {
   test_name: string;
+  sentence?: string | null;
   group?: string | null;
   self_AOIs?: string | null;
   correct_AOIs?: string | null;
@@ -28,6 +29,11 @@ export type CatalogRow = {
   correct_NULL?: string | null;
   potentially_correct_NULL?: string | null;
   incorrect_NULL?: string | null;
+  truth_value?: string | null;
+  only_position?: string | null;
+  morpheme?: string | null;
+  series?: string | null;
+  case_no?: number | null;
 };
 
 export type RecordingRow = {

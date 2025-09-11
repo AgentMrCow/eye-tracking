@@ -55,6 +55,16 @@ const navigationItems = [
     icon: Layout
   },
   {
+    title: "AOI Reports",
+    url: "/reports",
+    icon: Table
+  },
+  {
+    title: "Advanced Compare",
+    url: "/advanced",
+    icon: BarChart3
+  },
+  {
     title: "Settings",
     url: "/settings",
     icon: Settings

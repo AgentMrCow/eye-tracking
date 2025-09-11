@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+﻿import { For, Show, createMemo, createSignal } from "solid-js";
 import type { ColumnDef, ColumnFiltersState, SortingState, VisibilityState } from "@tanstack/solid-table";
 import { createSolidTable, flexRender, getCoreRowModel, getFilteredRowModel, getSortedRowModel } from "@tanstack/solid-table";
 import type { SearchSliceRow } from "@/shared/type";
@@ -120,14 +120,12 @@ export default function TestsSearchTable() {
         const r = props.row.original;
         const disabled = () => S.isDisabled({ test_name: r.test_name, recording_name: r.recording_name, participant_name: r.participant_name });
         return (
-          <label class="inline-flex items-center gap-2">
+          <label class="inline-flex items-center gap-2 text-xs">
             <input type="checkbox" checked={disabled()} onChange={(e) => S.setSlice({ test_name: r.test_name, recording_name: r.recording_name, participant_name: r.participant_name }, e.currentTarget.checked)} />
-            <span>{disabled() ? 'Disabled' : 'Enabled'}</span>
+            {disabled() ? 'Disabled' : 'Enabled'}
           </label>
         );
       },
-      enableSorting: false,
-      enableHiding: false,
     },
   ];
 
@@ -163,25 +161,25 @@ export default function TestsSearchTable() {
     <div class="space-y-3">
       <div class="flex items-center gap-2 py-2 flex-wrap">
         <TextField value={q()} onChange={setQ}>
-          <TextFieldInput placeholder="Search all…" class="max-w-sm" />
+          <TextFieldInput placeholder="Search all" class="max-w-sm" />
         </TextField>
         <TextField value={(table.getColumn("test_name")?.getFilterValue() as string) ?? ""} onChange={(v) => table.getColumn("test_name")?.setFilterValue(v)}>
-          <TextFieldInput placeholder="Filter test_name…" class="max-w-sm" />
+          <TextFieldInput placeholder="Filter test_name" class="max-w-sm" />
         </TextField>
         <TextField value={(table.getColumn("participant_name")?.getFilterValue() as string) ?? ""} onChange={(v) => table.getColumn("participant_name")?.setFilterValue(v)}>
-          <TextFieldInput placeholder="Filter participant…" class="max-w-sm" />
+          <TextFieldInput placeholder="Filter participant" class="max-w-sm" />
         </TextField>
         <TextField value={(table.getColumn("recording_name")?.getFilterValue() as string) ?? ""} onChange={(v) => table.getColumn("recording_name")?.setFilterValue(v)}>
-          <TextFieldInput placeholder="Filter recording…" class="max-w-sm" />
+          <TextFieldInput placeholder="Filter recording" class="max-w-sm" />
         </TextField>
         <TextField value={(table.getColumn("group")?.getFilterValue() as string) ?? ""} onChange={(v) => table.getColumn("group")?.setFilterValue(v)}>
-          <TextFieldInput placeholder="Filter group…" class="max-w-sm" />
+          <TextFieldInput placeholder="Filter group" class="max-w-sm" />
         </TextField>
         <TextField value={(table.getColumn("image_name")?.getFilterValue() as string) ?? ""} onChange={(v) => table.getColumn("image_name")?.setFilterValue(v)}>
-          <TextFieldInput placeholder="Filter image…" class="max-w-sm" />
+          <TextFieldInput placeholder="Filter image" class="max-w-sm" />
         </TextField>
         <TextField value={(table.getColumn("sentence")?.getFilterValue() as string) ?? ""} onChange={(v) => table.getColumn("sentence")?.setFilterValue(v)}>
-          <TextFieldInput placeholder="Filter sentence…" class="max-w-sm" />
+          <TextFieldInput placeholder="Filter sentence" class="max-w-sm" />
         </TextField>
         <label class="inline-flex items-center gap-2 text-sm ml-auto">
           <Checkbox checked={onlyDisabled()} onChange={(v) => setOnlyDisabled(!!v)} />
@@ -206,54 +204,54 @@ export default function TestsSearchTable() {
 
       <div class="rounded-md border overflow-auto max-h-[65vh] w-full">
         <div class="min-w-[900px]">
-        <Table>
-          <TableHeader>
-            <For each={table.getHeaderGroups()}>
-              {(headerGroup) => (
-                <TableRow>
-                  <For each={headerGroup.headers}>
-                    {(header) => (
-                      <TableHead>
-                        <Show when={!header.isPlaceholder}>
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                        </Show>
-                      </TableHead>
-                    )}
-                  </For>
-                </TableRow>
-              )}
-            </For>
-          </TableHeader>
-          <TableBody>
-            <Show when={table.getRowModel().rows?.length} fallback={
-              isLoading() ? (
-                <>
-                  {Array.from({ length: 8 }).map(() => (
-                    <TableRow>
-                      <TableCell colSpan={columns.length}>
-                        <Skeleton class="h-5 w-full" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </>
-              ) : (
-                <TableRow><TableCell colSpan={columns.length} class="h-24 text-center">No results.</TableCell></TableRow>
-              )
-            }>
-              <For each={table.getRowModel().rows}>
-                {(row) => (
-                  <TableRow data-state={row.getIsSelected() && "selected"}>
-                    <For each={row.getVisibleCells()}>
-                      {(cell) => (
-                        <TableCell>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+          <Table>
+            <TableHeader>
+              <For each={table.getHeaderGroups()}>
+                {(headerGroup) => (
+                  <TableRow>
+                    <For each={headerGroup.headers}>
+                      {(header) => (
+                        <TableHead>
+                          <Show when={!header.isPlaceholder}>
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </Show>
+                        </TableHead>
                       )}
                     </For>
                   </TableRow>
                 )}
               </For>
-            </Show>
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              <Show when={table.getRowModel().rows?.length} fallback={
+                isLoading() ? (
+                  <>
+                    {Array.from({ length: 8 }).map(() => (
+                      <TableRow>
+                        <TableCell colSpan={columns.length}>
+                          <Skeleton class="h-5 w-full" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </>
+                ) : (
+                  <TableRow><TableCell colSpan={columns.length} class="h-24 text-center">No results.</TableCell></TableRow>
+                )
+              }>
+                <For each={table.getRowModel().rows}>
+                  {(row) => (
+                    <TableRow data-state={row.getIsSelected() && "selected"}>
+                      <For each={row.getVisibleCells()}>
+                        {(cell) => (
+                          <TableCell>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                        )}
+                      </For>
+                    </TableRow>
+                  )}
+                </For>
+              </Show>
+            </TableBody>
+          </Table>
         </div>
       </div>
       <JsonViewer title="Search results (triples)" data={filtered()} getExplanation={() =>

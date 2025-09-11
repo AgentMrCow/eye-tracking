@@ -162,7 +162,7 @@ export default function GazeAnalysis() {
       return {
         label: b as string,
         data: dat.map((r: any) => ({ x: r.t, y: r[b as string] || 0 })),
-        borderColor: (Q.colorMap()[b as string] || DEFAULT_COLORS[b]) as string,
+        borderColor: (Q.colorMap()[b] || DEFAULT_COLORS[b]) as string,
         hidden: hide,
       };
     });

@@ -63,6 +63,16 @@ export default function AoISelects(p: Props) {
               </DropdownMenuCheckboxItem>
             )}
           </For>
+          <DropdownMenuSeparator />
+          <div class="px-2 py-1.5 text-xs text-muted-foreground">Bulk actions</div>
+          <DropdownMenuItem onSelect={() => { p.setBlueKeys(ALL_AOI_KEYS as AoiKey[]); p.setRedCustom(true); p.setRedKeys([]); }}>Enable all</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { /* allow clearing */ p.setBlueKeys([]); }}>Disable all</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => {
+            p.setBlueKeys(["correct_AOIs"] as AoiKey[]);
+            p.setRedCustom(false);
+            p.setRedKeys(ALL_AOI_KEYS.filter(k => k !== "correct_AOIs") as AoiKey[]);
+            p.setInvalidCats(["missing"]);
+          }}>Reset defaults</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -103,6 +113,24 @@ export default function AoISelects(p: Props) {
               </For>
             </>
           </Show>
+          <DropdownMenuSeparator />
+          <div class="px-2 py-1.5 text-xs text-muted-foreground">Bulk actions</div>
+          <DropdownMenuItem onSelect={() => {
+            if (p.redCustom) {
+              p.setRedKeys(ALL_AOI_KEYS.filter((k) => !p.blueKeys.includes(k)) as AoiKey[]);
+            } else {
+              // switching to custom with all remaining
+              p.setRedCustom(true);
+              p.setRedKeys(ALL_AOI_KEYS.filter((k) => !p.blueKeys.includes(k)) as AoiKey[]);
+            }
+          }}>Enable all</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => { p.setRedCustom(true); p.setRedKeys([]); }}>Disable all</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => {
+            p.setBlueKeys(["correct_AOIs"] as AoiKey[]);
+            p.setRedCustom(false);
+            p.setRedKeys(ALL_AOI_KEYS.filter(k => k !== "correct_AOIs") as AoiKey[]);
+            p.setInvalidCats(["missing"]);
+          }}>Reset defaults</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -133,6 +161,9 @@ export default function AoISelects(p: Props) {
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* helper note */}
+      <div class="md:col-span-3 text-[11px] text-muted-foreground">Defaults: Blue = <code>correct_AOIs</code>; Red = remaining AOIs; Invalid = <code>missing</code>.</div>
 
       {/* summaries */}
       <div class="md:col-span-3 flex flex-wrap gap-4 pt-1">

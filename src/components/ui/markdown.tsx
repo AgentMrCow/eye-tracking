@@ -1,5 +1,4 @@
-import { createMemo } from "solid-js";
-// marked + DOMPurify for safe Markdown → HTML
+﻿import { createMemo } from "solid-js";
 import { marked } from "marked";
 // @ts-ignore types may vary by env
 import DOMPurify from "dompurify";
@@ -19,4 +18,3 @@ export default function Markdown(p: Props) {
     <div class="text-sm leading-relaxed space-y-2 [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded" innerHTML={html()} />
   );
 }
-

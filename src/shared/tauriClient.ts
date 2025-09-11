@@ -8,7 +8,7 @@ import type { DisabledSlice, SearchTestRow, SearchSliceRow } from "@/shared/type
 let _staticData: Promise<StaticData> | null = null;
 export async function getStatic(): Promise<StaticData> {
   if (!_staticData) {
-    _staticData = invoke<StaticData>("get_static_data").catch((err) => {
+    _staticData = withLoading(invoke<StaticData>("get_static_data")).catch((err) => {
       _staticData = null; // allow retry
       throw err;
     });

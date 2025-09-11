@@ -7,10 +7,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Mutex};
 use std::time::Duration;
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager, State};
+use tauri::async_runtime::spawn;
+// use tokio::time::{sleep, Duration as TokioDuration};
 use url::Url;
 
 /* ──────────────────────────────────────────────────────────────
@@ -66,6 +68,31 @@ pub struct DisabledSlice {
 }
 
 pub struct DisabledStore(pub Arc<RwLock<HashSet<DisabledSlice>>>);
+
+// ─────────────────────────── Splashscreen setup tracking ───────────────────────────
+struct SetupState {
+    frontend_task: bool,
+    backend_task: bool,
+}
+
+#[tauri::command]
+async fn set_complete(
+    app: AppHandle,
+    state: State<'_, Mutex<SetupState>>,
+    task: String,
+) -> Result<(), ()> {
+    let mut state_lock = state.lock().unwrap();
+    match task.as_str() {
+        "frontend" => state_lock.frontend_task = true,
+        "backend" => state_lock.backend_task = true,
+        _ => return Ok(()),
+    }
+    if state_lock.frontend_task && state_lock.backend_task {
+        if let Some(splash) = app.get_webview_window("splashscreen") { let _ = splash.close(); }
+        if let Some(main) = app.get_webview_window("main") { let _ = main.show(); }
+    }
+    Ok(())
+}
 
 fn disabled_file_path(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
@@ -921,6 +948,8 @@ App bootstrap
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // splash tracking state
+        .manage(Mutex::new(SetupState { frontend_task: false, backend_task: false }))
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(|app| {
             println!("Setting up the application...");
@@ -969,6 +998,11 @@ pub fn run() {
             let disabled_set = load_disabled_from_disk(&handle);
             app.manage(DisabledStore(Arc::new(RwLock::new(disabled_set))));
             println!("Setup completed (read-only). Disabled slices loaded.");
+            // Mark backend ready for splashscreen (non-blocking)
+            let handle = app.handle().clone();
+            spawn(async move {
+                let _ = set_complete(handle.clone(), handle.state::<Mutex<SetupState>>(), "backend".to_string()).await;
+            });
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())
@@ -994,6 +1028,8 @@ pub fn run() {
             get_disabled_slices,
             set_disabled_slices,
             toggle_disabled_slice,
+            // splashscreen control
+            set_complete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

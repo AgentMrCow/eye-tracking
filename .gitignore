@@ -6,6 +6,7 @@ dist
 **/*.csv
 **/*.xlsx
 **/*.xls
+**/*.tsv
 **/*.pdf
 **/*.docx
 **/*.doc

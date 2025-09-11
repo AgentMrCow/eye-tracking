@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, Show } from "solid-js";
+﻿import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { explainJsonAiStream, hasXaiKey } from "@/shared/ai";
@@ -21,6 +21,7 @@ export default function JsonViewer(props: Props) {
   const [activeTab, setActiveTab] = createSignal<"local" | "ai">("local");
   const [copiedMd, setCopiedMd] = createSignal(false);
   let abortCtrl: AbortController | null = null;
+
   const json = createMemo(() => {
     try { return JSON.stringify(props.data, null, 2); } catch { return String(props.data ?? ""); }
   });
@@ -50,9 +51,7 @@ export default function JsonViewer(props: Props) {
         </div>
       </CardHeader>
       <CardContent class="space-y-3">
-        <pre class="text-xs bg-muted rounded p-3 overflow-auto max-h-[320px] whitespace-pre-wrap break-words">
-{json()}
-        </pre>
+        <pre class="text-xs bg-muted rounded p-3 overflow-auto max-h-[320px] whitespace-pre-wrap break-words">{json()}</pre>
         <Show when={openAI()}>
           <div class="rounded border bg-background">
             <div class="flex border-b">
