@@ -42,6 +42,45 @@
 - Respect the feature‑first layout and the `@` alias.
 - Update this file and `README.md` when behavior or commands change.
 
+## Recent Development Context (2025-01-12)
+
+### Issues Fixed
+1. **Participant Selection Bug in Advanced Compare**
+   - Problem: Participant dropdown showed "0 available" despite having participants
+   - Root cause: `participantOptions()` memo was filtering correctly but UI wasn't updating
+   - Solution: Fixed reactive dependencies and auto-selection logic
+
+2. **"None" Button Not Working**
+   - Problem: Clicking "None" for participants would immediately re-select all participants
+   - Root cause: Auto-selection effect was overriding user intent
+   - Solution: Added `userClearedParticipants` flag to track explicit user actions
+
+3. **Code Quality Improvements**
+   - Cleaned up debug console.log statements (commented out for production)
+   - Added race condition protection to async effects in multiple files:
+     - `AdvancedComparePage.tsx`: Added request tracking for participant fetching
+     - `ComparePanels.tsx`: Added protection for timeline recordings and images
+     - `useGazeQuery.ts`: Added protection for AOI maps, sessions, images, windows, and gaze data
+   - Fixed CSS typo: `max-h[240px]` → `max-h-[240px]`
+
+### Database Analysis Completed
+- Explored `eye_tracking.db` structure with 1.8M gaze data points
+- Documented table relationships and data flow
+- Key findings saved to project memory and README
+
+### Code Patterns Established
+- **Async Effect Protection**: Use request counters to prevent stale state updates
+  ```typescript
+  let requestId = 0;
+  createEffect(async () => {
+    const myReq = ++requestId;
+    const data = await fetchData();
+    if (myReq === requestId) setState(data);
+  });
+  ```
+- **User Intent Tracking**: Use flags to distinguish between auto-selection and user actions
+- **Production Logging**: Comment out debug logs, keep error logs for production debugging
+
 ## Backend Additions (QAC)
 - SQLite table `participants(participant TEXT PRIMARY KEY, is_qac INTEGER CHECK (is_qac IN (0,1)))` is bundled in `src-tauri/resources/eye_tracking.db`.
 - Preload: `TLK311`–`TLK320` have `is_qac = 0` (non‑QAC). All others are treated as QAC by default.
