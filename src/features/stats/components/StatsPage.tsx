@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { NumberField, NumberFieldInput } from "@/components/ui/number-field";
 import { LineChart } from "@/components/ui/charts";
 import { getAllCatalog, getGazeData, getParticipants, getTimelineRecordings } from "@/features/gaze/services/gazeApi";
+import JsonViewer from "@/components/ui/json-viewer";
 import { parseAOISet } from "@/features/gaze/utils";
 
 type SeriesPoint = { x: number; y: number };
@@ -187,9 +188,13 @@ export default function StatsPage() {
               Recommended earliest sustained window: <b>{rec()!.start.toFixed(3)}s</b> → <b>{rec()!.end.toFixed(3)}s</b> (threshold = 0.75 × peak)
             </div>
           </Show>
+          <div class="grid gap-3 md:grid-cols-2">
+            <JsonViewer title="Series (points)" data={series()} getExplanation={() =>
+              'Points are computed from binned %Blue - %Red with a 200ms (default) shift applied. Use Bin/Shift controls to change.'} />
+            <JsonViewer title="Parameters & result" data={{ binMs: binMs(), shiftMs: shiftMs(), windowMs: windowMs(), sustainMs: sustainMs(), pick: rec() }} />
+          </div>
         </CardContent>
       </Card>
     </div>
   );
 }
-

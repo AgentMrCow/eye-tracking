@@ -5,6 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getParticipantsTable, getTestsByParticipant, type ParticipantRow } from "../services/participantsApi";
+import JsonViewer from "@/components/ui/json-viewer";
 
 export default function ParticipantsPage() {
   const [rows, setRows] = createSignal<ParticipantRow[]>([]);
@@ -95,9 +96,12 @@ export default function ParticipantsPage() {
               </Table>
             </div>
           </div>
+          <div class="mt-4 grid gap-4 md:grid-cols-2">
+            <JsonViewer title="Participants table" data={rows()} />
+            <JsonViewer title="Tests by participant" data={testsByP()} />
+          </div>
         </CardContent>
       </Card>
     </div>
   );
 }
-

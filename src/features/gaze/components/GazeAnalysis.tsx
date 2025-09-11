@@ -8,6 +8,7 @@ import TimelineChart from "./TimelineChart";
 import AoiSetChart from "./AoiSetChart";
 import StimulusReplay from "./StimulusReplay";
 import PieAndStats from "./PieAndStats";
+import JsonViewer from "@/components/ui/json-viewer";
 import WindowsTable from "./WindowsTable";
 import GazePath from "./GazePath";
 
@@ -15,6 +16,7 @@ import { useGazeQuery } from "../hooks/useGazeQuery";
 import { useReplay } from "../hooks/useReplay";
 import type { MetaKey } from "../types";
 import { parseAOISet } from "../utils";
+import { DEFAULT_COLORS } from "../constants";
 
 export default function GazeAnalysis() {
   const Q = useGazeQuery();
@@ -139,6 +141,37 @@ export default function GazeAnalysis() {
     console.debug("[AOI] debug:", d);
   });
 
+  // validity counts for formulas
+  const validityCounts = createMemo(() => {
+    const arr = Q.gaze();
+    const total = arr.length;
+    const missing = arr.filter(g => g.box_name === 'missing').length;
+    const out_of_screen = arr.filter(g => g.box_name === 'out_of_screen').length;
+    const inAoi = arr.filter(g => !['missing','out_of_screen','other'].includes(g.box_name)).length;
+    return { total, missing, out_of_screen, inAoi };
+  });
+
+  // Build a copy of the Timeline dataset for JSON viewing (mirrors TimelineChart)
+  const timelineDataset = createMemo(() => {
+    const dat = Q.rows().map(r => ({ t: (+new Date(r.timestamp) - Q.baseMs()) / 1000, ...r }));
+    const keys = Object.keys(DEFAULT_COLORS) as (keyof typeof DEFAULT_COLORS)[];
+    const ds = keys.map((b) => {
+      const sel = Q.selectedBoxes();
+      const hide = sel.size ? !sel.has(b as string) : false;
+      return {
+        label: b as string,
+        data: dat.map((r: any) => ({ x: r.t, y: r[b as string] || 0 })),
+        borderColor: (Q.colorMap()[b as string] || DEFAULT_COLORS[b]) as string,
+        hidden: hide,
+      };
+    });
+    const windows = Q.wordWin().flatMap((w, i) => [
+      { label: `${w.chinese_word} (start)`, data: [{ x: w.start_sec, y: 0 }, { x: w.start_sec, y: 100 }], _window: true },
+      { label: `${w.chinese_word} (end)`,   data: [{ x: w.end_sec,   y: 0 }, { x: w.end_sec,   y: 100 }], _window: true },
+    ]);
+    return { datasets: [...ds, ...windows] };
+  });
+
   // Use constrained lists directly so UI reflects actual state
 
   return (
@@ -233,10 +266,15 @@ export default function GazeAnalysis() {
                 />
               </Show>
               <Show when={showAoiDebug()}>
-                <pre class="mt-2 p-2 bg-muted rounded text-[11px] overflow-auto">
-                  {JSON.stringify(aoiDebug(), null, 2)}
-                </pre>
+                <div class="mt-2">
+                  <JsonViewer title="AOI debug (inputs and sizes)" data={aoiDebug()} getExplanation={(d) =>
+                    'This JSON shows current selections, catalog AOIs, parsed sizes, and session choices used to build charts.'} />
+                </div>
               </Show>
+              <div class="mt-2">
+                <JsonViewer title="Timeline chart dataset" data={timelineDataset()} getExplanation={() =>
+                  'Chart.js dataset for the timeline: per-box % over time plus vertical word window markers.'} />
+              </div>
             </CardContent>
           </Card>
 
@@ -305,10 +343,19 @@ export default function GazeAnalysis() {
           </Card>
 
           {/* pie + stats */}
-          <PieAndStats boxStats={Q.boxStats()} colorMap={Q.colorMap()} statsWhole={Q.statsWhole()} />
+          <PieAndStats boxStats={Q.boxStats()} colorMap={Q.colorMap()} statsWhole={Q.statsWhole()} validityCounts={validityCounts()} />
 
           {/* windows */}
           <WindowsTable wordWin={Q.wordWin()} />
+
+          {/* raw time bins viewer for reproducibility */}
+          <Card class="xl:col-span-2">
+            <CardHeader><CardTitle>Time Bins (per 100ms by default)</CardTitle></CardHeader>
+            <CardContent>
+              <JsonViewer title="Rows used for charts" data={Q.rows()} getExplanation={() =>
+                'Each row is a time bin with percentage of gaze by box_name. These are fed to timeline and AOI-set charts.'} />
+            </CardContent>
+          </Card>
 
           {/* path */}
           <Card>

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart } from "@/components/ui/charts";
+import JsonViewer from "@/components/ui/json-viewer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { isLoading } from "@/shared/loading";
 import type { BoxTypes, TimelineRecording, WordWindow } from "../types";
@@ -423,6 +424,16 @@ export default function ComparePanels(p: Props) {
                       </Show>
                     </Show>
                   </div>
+                  <div class="grid gap-3 md:grid-cols-2">
+                    <JsonViewer title="Left chart dataset" data={viz1()} getExplanation={() =>
+                      'Chart.js dataset built from %Blue, %Red, and %Valid per time bin for the left selection.'} />
+                    <JsonViewer title="Left gaze summary" data={{ points: (series1()?.datasets?.[0]?.data?.length ?? 0), baseMs: series1()?.baseMs ?? 0, timeline: selTimeline1() || null, recording: selRecording1() || null }} />
+                  </div>
+                  <div class="grid gap-3 md:grid-cols-2">
+                    <JsonViewer title="Left sets (boxes)" data={p.getSetsFor(selTest1() || "")} getExplanation={() =>
+                      'Box names included in the Blue and Red sets for the selected test.'} />
+                    <JsonViewer title="Invalid categories" data={p.invalidCats} />
+                  </div>
 
                   {/* Stimulus + overlay */}
                   <StimulusPane
@@ -484,6 +495,15 @@ export default function ComparePanels(p: Props) {
                         <LineChart data={viz2()} options={compareOpts()} plugins={[RevealClipPlugin as any]} />
                       </Show>
                     </Show>
+                  </div>
+                  <div class="grid gap-3 md:grid-cols-2">
+                    <JsonViewer title="Right chart dataset" data={viz2()} getExplanation={() =>
+                      'Chart.js dataset built from %Blue, %Red, and %Valid per time bin for the right selection.'} />
+                    <JsonViewer title="Right gaze summary" data={{ points: (series2()?.datasets?.[0]?.data?.length ?? 0), baseMs: series2()?.baseMs ?? 0, timeline: selTimeline2() || null, recording: selRecording2() || null }} />
+                  </div>
+                  <div class="grid gap-3 md:grid-cols-2">
+                    <JsonViewer title="Right sets (boxes)" data={p.getSetsFor(selTest2() || "")} />
+                    <JsonViewer title="Invalid categories" data={p.invalidCats} />
                   </div>
 
                   <StimulusPane

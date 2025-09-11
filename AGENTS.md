@@ -62,5 +62,14 @@
 - Catalog Compare user preferences are persisted across runs using Tauri Store (fallback to `localStorage` in web preview):
   - Stored file: `user_prefs.json` under the app's data directory.
   - Stored keys: `compare_prefs` with `{ blueKeys, redKeys, redCustom, invalidCats }`.
-  - On app start, these preferences are loaded and applied in `useCatalogState`.
-  - Changing AOI sets or invalid categories automatically saves the updated preferences.
+- On app start, these preferences are loaded and applied in `useCatalogState`.
+- Changing AOI sets or invalid categories automatically saves the updated preferences.
+
+## AI Explain (Grok / xAI)
+- All JSON viewers include an "Explain" button.
+- If `VITE_XAI_API_KEY` is set in env, the viewer calls xAI (Grok) to explain the JSON; otherwise, it falls back to a built-in short explanation (when provided).
+- How to use:
+  - Create `.env.local` at the project root with:
+    - `VITE_XAI_API_KEY=your_xai_key_here`
+  - Restart the dev server or rebuild.
+  - You can also set/override the key in-app under Settings → xAI Grok API (stored in Tauri Store).

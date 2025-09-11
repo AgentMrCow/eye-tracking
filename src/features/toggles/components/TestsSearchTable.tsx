@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { isLoading } from "@/shared/loading";
 import { TextField, TextFieldInput } from "@/components/ui/text-field";
 import { searchSlices } from "@/features/toggles/services/searchApi";
+import JsonViewer from "@/components/ui/json-viewer";
 import { useDisabledSlices } from "@/features/toggles/hooks/useDisabledSlices";
 
 const durationFmt = (n?: number | null) => (n == null ? "" : `${n.toFixed(2)}s`);
@@ -255,6 +256,8 @@ export default function TestsSearchTable() {
         </Table>
         </div>
       </div>
+      <JsonViewer title="Search results (triples)" data={filtered()} getExplanation={() =>
+        'This JSON shows the Test × Recording × Participant rows used in the table; toggles write to disabled_slices.json.'} />
     </div>
   );
 }

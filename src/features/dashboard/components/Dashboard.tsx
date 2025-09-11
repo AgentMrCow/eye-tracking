@@ -6,6 +6,7 @@ import { TextField, TextFieldInput } from "@/components/ui/text-field";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { SearchTestRow } from "@/shared/type";
 import { searchTests } from "@/features/toggles/services/searchApi";
+import JsonViewer from "@/components/ui/json-viewer";
 
 const fmt = (n?: number | null, d = 2) => (n == null ? "" : n.toFixed(d));
 
@@ -39,6 +40,10 @@ export default function Dashboard() {
             <div class="rounded border p-3"><div class="text-muted-foreground">Total tests</div><div class="text-xl font-semibold">{totals().tests}</div></div>
             <div class="rounded border p-3"><div class="text-muted-foreground">Tests with video+image pairs</div><div class="text-xl font-semibold">{totals().withPairs}</div></div>
             <div class="rounded border p-3"><div class="text-muted-foreground">Avg pair duration</div><div class="text-xl font-semibold">{fmt(totals().avgPair)}s</div></div>
+          </div>
+          <div class="mt-4">
+            <JsonViewer title="Search results (tests)" data={filtered()} getExplanation={() =>
+              'Aggregated by test from test_catalog and test_group; durations are mp4+png per unique triple.'} />
           </div>
         </CardContent>
       </Card>
@@ -102,4 +107,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

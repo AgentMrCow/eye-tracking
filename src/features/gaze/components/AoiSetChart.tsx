@@ -1,4 +1,5 @@
 import { LineChart } from "@/components/ui/charts";
+import JsonViewer from "@/components/ui/json-viewer";
 import type { BoxTypes } from "../types";
 
 type RowPoint = { t: number } & Record<string, number>;
@@ -38,15 +39,19 @@ export default function AoiSetChart(p: Props) {
   ].filter(Boolean) as any[];
 
   return (
-    <div class="h-[400px]">
-      <LineChart
-        data={{ datasets }}
-        options={{
-          responsive: true, maintainAspectRatio: false,
-          scales: { x: { type: "linear", min: 0, max: p.viewSec }, y: { beginAtZero: true, max: 100 } },
-          plugins: { legend: { position: "top", align: "start", labels: { usePointStyle: true, boxWidth: 8, font: { size: 10 } } } },
-        }}
-      />
+    <div class="space-y-3">
+      <div class="h-[400px]">
+        <LineChart
+          data={{ datasets }}
+          options={{
+            responsive: true, maintainAspectRatio: false,
+            scales: { x: { type: "linear", min: 0, max: p.viewSec }, y: { beginAtZero: true, max: 100 } },
+            plugins: { legend: { position: "top", align: "start", labels: { usePointStyle: true, boxWidth: 8, font: { size: 10 } } } },
+          }}
+        />
+      </div>
+      <JsonViewer title="AOI-set chart dataset" data={{ datasets }} getExplanation={() =>
+        'Each line sums percentages over the set of boxes for that AOI category per time bin.'} />
     </div>
   );
 }
