@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, untrack, onMount } from "solid-js";
+import { For, Show, createEffect, createSignal, createMemo } from "solid-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -43,6 +43,17 @@ export default function AdvancedComparePage() {
   const [globalTests, setGlobalTests] = createSignal<string[]>([]);
   const [globalParticipants, setGlobalParticipants] = createSignal<string[]>([]);
   const [numGroups, setNumGroups] = createSignal<number>(2);
+  const [globalRecordings, setGlobalRecordings] = createSignal<string[]>([]);
+  // Picker values for Select components (single value used to add to arrays)
+  const [pickGlobalTest, setPickGlobalTest] = createSignal<string>("");
+  const [pickGlobalParticipant, setPickGlobalParticipant] = createSignal<string>("");
+  const [pickGlobalRecording, setPickGlobalRecording] = createSignal<string>("");
+  // Group-level pickers for Select components
+  const [pickTestByGroup, setPickTestByGroup] = createSignal<Record<string, string>>({});
+  const [pickParticipantByGroup, setPickParticipantByGroup] = createSignal<Record<string, string>>({});
+  const [pickRecordingByGroup, setPickRecordingByGroup] = createSignal<Record<string, string>>({});
+  const getGroupPick = (map: () => Record<string, string>, id: string) => map()[id] ?? "";
+  const setGroupPick = (setter: typeof setPickTestByGroup, id: string, v: string) => setter(prev => ({ ...prev, [id]: v || "" }));
   
   // AOI threshold
   const [thresholdPct, setThresholdPct] = createSignal<number>(50);
@@ -95,13 +106,8 @@ export default function AdvancedComparePage() {
   const [seriesOptions, setSeriesOptions] = createSignal<string[]>([]);
   const [groupOptions, setGroupOptions] = createSignal<string[]>([]);
 
-  // Session management
-  const [currentTest, setCurrentTest] = createSignal<string>("");
-  const [selParticipants, setSelParticipants] = createSignal<string[]>([]);
-  const [selectedSessions, setSelectedSessions] = createSignal<Record<string, string[]>>({});
-
-  // Initialize with onMount and load initial data
-  onMount(async () => {
+  // Load initial data
+  createEffect(async () => {
     const [catalogData, participantsData, staticData] = await Promise.all([
       getAllCatalog().catch(() => []),
       getParticipantsTableRaw().catch(() => []),
@@ -132,12 +138,6 @@ export default function AdvancedComparePage() {
     setPositions(pos as string[]);
     setSeriesOptions(series as string[]);
     setGroupOptions(groups as string[]);
-    
-    // Set initial test selection if available
-    if (Object.keys(staticData.participants_by_test || {}).length > 0) {
-      const firstTest = Object.keys(staticData.participants_by_test || {})[0];
-      setCurrentTest(firstTest);
-    }
   });
 
   // Fetch sessions for participants
@@ -161,29 +161,6 @@ export default function AdvancedComparePage() {
     }
     
     setSessionsByPart(sessionMap);
-  });
-
-  // Session selection management with untrack to prevent infinite loops
-  createEffect(() => {
-    const test = currentTest();
-    const parts = selParticipants();
-    
-    if (!test || !parts.length) {
-      setSelectedSessions({});
-      return;
-    }
-
-    const newSessions: Record<string, string[]> = { ...untrack(selectedSessions) };
-    const currentSessionsByPart = { ...untrack(sessionsByPart) };
-    
-    parts.forEach(part => {
-      const sessions = currentSessionsByPart[part] || [];
-      if (!newSessions[part]) {
-        newSessions[part] = sessions.map(s => `${s.timeline}|${s.recording}`);
-      }
-    });
-    
-    setSelectedSessions(newSessions);
   });
 
   // Update number of groups
@@ -217,34 +194,22 @@ export default function AdvancedComparePage() {
     }
   });
 
-  // Computed values using createMemo for performance
-  const filteredTestsByGroup = createMemo(() => {
-    const catalogMap = new Map(catalog().map(c => [c.test_name, c]));
-    const groupMap = new Map<string, string[]>();
-    
-    compareGroups().forEach(group => {
-      const filtered = globalTests().filter(test => {
-        const cat = catalogMap.get(test);
-        if (!cat) return true;
-        
-        const filters = group.metaFilters;
-        return (
-          (filters.truthValue === "all" || cat.truth_value === filters.truthValue) &&
-          (filters.morpheme === "all" || cat.morpheme === filters.morpheme) &&
-          (filters.position === "all" || cat.only_position === filters.position) &&
-          (filters.series === "all" || cat.series === filters.series) &&
-          (filters.group === "all" || cat.group === filters.group)
-        );
-      });
-      groupMap.set(group.id, filtered);
-    });
-    
-    return groupMap;
-  });
-
   // Filtered options for each group
   const getFilteredTests = (group: CompareGroup) => {
-    return filteredTestsByGroup().get(group.id) || [];
+    const catalogMap = new Map(catalog().map(c => [c.test_name, c]));
+    return globalTests().filter(test => {
+      const cat = catalogMap.get(test);
+      if (!cat) return true;
+      
+      const filters = group.metaFilters;
+      return (
+        (filters.truthValue === "all" || cat.truth_value === filters.truthValue) &&
+        (filters.morpheme === "all" || cat.morpheme === filters.morpheme) &&
+        (filters.position === "all" || cat.only_position === filters.position) &&
+        (filters.series === "all" || cat.series === filters.series) &&
+        (filters.group === "all" || cat.group === filters.group)
+      );
+    });
   };
 
   const getFilteredParticipants = (group: CompareGroup) => {
@@ -260,16 +225,28 @@ export default function AdvancedComparePage() {
     return globalParticipants().filter(p => allowedParts.has(p));
   };
 
+  // Global recording options derived from selected global participants and fetched sessions
+  const globalRecordingOptions = createMemo(() => {
+    const parts = globalParticipants();
+    const set = new Set<string>();
+    parts.forEach(p => {
+      const sessions = sessionsByPart()[p] || [];
+      sessions.forEach(s => set.add(`${p} | ${s.timeline}`));
+    });
+    return Array.from(set);
+  });
+
   const getFilteredRecordings = (group: CompareGroup) => {
     if (!group.participants.length) return [];
-    
     const allRecordings = new Set<string>();
     group.participants.forEach(part => {
       const sessions = sessionsByPart()[part] || [];
       sessions.forEach(s => allRecordings.add(`${part} | ${s.timeline}`));
     });
-    
-    return Array.from(allRecordings);
+    let arr = Array.from(allRecordings);
+    const gr = globalRecordings();
+    if (gr.length) arr = arr.filter(r => gr.includes(r));
+    return arr;
   };
 
   // Update group
@@ -374,7 +351,8 @@ export default function AdvancedComparePage() {
           <CardTitle>Advanced Compare - Cantonese "Only" Comprehension Analysis</CardTitle>
         </CardHeader>
         <CardContent class="space-y-4">
-          {/* Global Test Selection */}
+          {/* Global Test Selection */
+          }
           <div class="flex flex-col gap-2">
             <div class="flex items-center justify-between">
               <span class="text-sm font-medium">Global Tests ({tests().length} available)</span>
@@ -383,32 +361,43 @@ export default function AdvancedComparePage() {
                 <Button size="sm" variant="outline" onClick={() => setGlobalTests([])}>None</Button>
               </div>
             </div>
-            <div class="space-y-2">
-              <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-40 overflow-y-auto border rounded p-2">
-                <For each={tests()}>
-                  {(test) => (
-                    <label class="flex items-center space-x-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={globalTests().includes(test)}
-                        onChange={(e) => {
-                          if (e.currentTarget.checked) {
-                            setGlobalTests([...globalTests(), test]);
-                          } else {
-                            setGlobalTests(globalTests().filter(t => t !== test));
-                          }
-                        }}
-                      />
-                      <span class="truncate">{test}</span>
-                      <span class="text-xs text-muted-foreground">({(partsByTest()[test] || []).length})</span>
-                    </label>
-                  )}
-                </For>
-              </div>
+            <div class="flex flex-wrap gap-2">
+              <For each={globalTests()}>{(t) => (
+                <span class="text-xs px-2 py-0.5 rounded border inline-flex items-center gap-1">
+                  {t}
+                  <button class="text-muted-foreground" onClick={() => setGlobalTests(globalTests().filter(x => x !== t))}>×</button>
+                </span>
+              )}</For>
             </div>
+            <Select
+              value={pickGlobalTest()}
+              onChange={(v) => {
+                const val = v || "";
+                setPickGlobalTest("");
+                if (val && !globalTests().includes(val)) setGlobalTests([...globalTests(), val]);
+              }}
+              options={tests().filter(t => !globalTests().includes(t))}
+              itemComponent={(pp) => {
+                const tname = pp.item.rawValue as string;
+                const count = (partsByTest()[tname] || []).length;
+                return (
+                  <SelectItem item={pp.item}>
+                    <div class="flex w-full items-center justify-between">
+                      <span class="truncate">{tname}</span>
+                      <span class="text-xs text-muted-foreground">{count} participants</span>
+                    </div>
+                  </SelectItem>
+                );
+              }}
+            >
+              <SelectTrigger class="w-full">
+                <SelectValue>{pickGlobalTest() || "Add test"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent class="max-h-60 overflow-y-auto" />
+            </Select>
           </div>
 
-          {/* Global Participant Selection */}
+          {/* Global Participant Selection */
           <div class="flex flex-col gap-2">
             <div class="flex items-center justify-between">
               <span class="text-sm font-medium">Global Participants ({participants().length} available)</span>
@@ -417,29 +406,78 @@ export default function AdvancedComparePage() {
                 <Button size="sm" variant="outline" onClick={() => setGlobalParticipants([])}>None</Button>
               </div>
             </div>
-            <div class="space-y-2">
-              <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-40 overflow-y-auto border rounded p-2">
-                <For each={participants()}>
-                  {(participant) => (
-                    <label class="flex items-center space-x-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={globalParticipants().includes(participant)}
-                        onChange={(e) => {
-                          if (e.currentTarget.checked) {
-                            setGlobalParticipants([...globalParticipants(), participant]);
-                          } else {
-                            setGlobalParticipants(globalParticipants().filter(p => p !== participant));
-                          }
-                        }}
-                      />
-                      <span class="truncate">{participant}</span>
-                      <span class="text-xs text-muted-foreground">({isQacMap()[participant] ? 'QAC' : 'Non-QAC'})</span>
-                    </label>
-                  )}
-                </For>
+            <div class="flex flex-wrap gap-2">
+              <For each={globalParticipants()}>{(p) => (
+                <span class="text-xs px-2 py-0.5 rounded border inline-flex items-center gap-1">
+                  {p}
+                  <button class="text-muted-foreground" onClick={() => setGlobalParticipants(globalParticipants().filter(x => x !== p))}>×</button>
+                </span>
+              )}</For>
+            </div>
+            <Select
+              value={pickGlobalParticipant()}
+              onChange={(v) => {
+                const val = v || "";
+                setPickGlobalParticipant("");
+                if (val && !globalParticipants().includes(val)) setGlobalParticipants([...globalParticipants(), val]);
+              }}
+              options={participants().filter(p => !globalParticipants().includes(p))}
+              itemComponent={(pp) => {
+                const p = pp.item.rawValue as string;
+                const isQac = !!isQacMap()[p];
+                return (
+                  <SelectItem item={pp.item}>
+                    <div class="flex w-full items-center justify-between">
+                      <span class="truncate">{p}</span>
+                      <span class={`px-1.5 py-0.5 rounded text-[10px] font-medium ${isQac ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{isQac ? 'QAC' : 'Non-QAC'}</span>
+                    </div>
+                  </SelectItem>
+                );
+              }}
+            >
+              <SelectTrigger class="w-full">
+                <SelectValue>{pickGlobalParticipant() || "Add participant"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent class="max-h-60 overflow-y-auto" />
+            </Select>
+          </div>
+
+          {/* Global Recordings Selection (Participant | Timeline) */
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium">Global Recordings (Participant | Timeline)</span>
+              <div class="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setGlobalRecordings(globalRecordingOptions())}>All</Button>
+                <Button size="sm" variant="outline" onClick={() => setGlobalRecordings([])}>None</Button>
               </div>
             </div>
+            <div class="flex flex-wrap gap-2">
+              <For each={globalRecordings()}>{(r) => (
+                <span class="text-xs px-2 py-0.5 rounded border inline-flex items-center gap-1">
+                  {r}
+                  <button class="text-muted-foreground" onClick={() => setGlobalRecordings(globalRecordings().filter(x => x !== r))}>×</button>
+                </span>
+              )}</For>
+            </div>
+            <Select
+              value={pickGlobalRecording()}
+              onChange={(v) => {
+                const val = v || "";
+                setPickGlobalRecording("");
+                if (val && !globalRecordings().includes(val)) setGlobalRecordings([...globalRecordings(), val]);
+              }}
+              options={globalRecordingOptions().filter(r => !globalRecordings().includes(r))}
+              itemComponent={(pp) => (
+                <SelectItem item={pp.item}>
+                  <span class="truncate">{pp.item.rawValue}</span>
+                </SelectItem>
+              )}
+            >
+              <SelectTrigger class="w-full">
+                <SelectValue>{pickGlobalRecording() || "Add recording"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent class="max-h-60 overflow-y-auto" />
+            </Select>
           </div>
 
           {/* Number of Groups */}
@@ -544,77 +582,99 @@ export default function AdvancedComparePage() {
               <CardTitle>{group.name}</CardTitle>
             </CardHeader>
             <CardContent class="space-y-4">
-              {/* Group Tests */}
+              {/* Group Tests */
               <div class="flex flex-col gap-2">
                 <span class="text-sm font-medium">Tests (filtered by global + meta filters)</span>
-                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-40 overflow-y-auto border rounded p-2">
-                  <For each={getFilteredTests(group)}>
-                    {(test) => (
-                      <label class="flex items-center space-x-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={group.tests.includes(test)}
-                          onChange={(e) => {
-                            const next = e.currentTarget.checked
-                              ? [...group.tests, test]
-                              : group.tests.filter((t) => t !== test);
-                            updateGroup(group.id, { tests: next });
-                          }}
-                        />
-                        <span class="truncate">{test}</span>
-                      </label>
-                    )}
-                  </For>
+                <div class="flex flex-wrap gap-2">
+                  <For each={group.tests}>{(t) => (
+                    <span class="text-xs px-2 py-0.5 rounded border inline-flex items-center gap-1">
+                      {t}
+                      <button class="text-muted-foreground" onClick={() => updateGroup(group.id, { tests: group.tests.filter(x => x !== t) })}>×</button>
+                    </span>
+                  )}</For>
                 </div>
+                <Select
+                  value={getGroupPick(pickTestByGroup, group.id)}
+                  onChange={(v) => {
+                    const val = v || "";
+                    setGroupPick(setPickTestByGroup, group.id, "");
+                    if (val && !group.tests.includes(val)) updateGroup(group.id, { tests: [...group.tests, val] });
+                  }}
+                  options={getFilteredTests(group).filter(t => !group.tests.includes(t))}
+                  itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}
+                >
+                  <SelectTrigger class="w-full">
+                    <SelectValue>{getGroupPick(pickTestByGroup, group.id) || 'Add test'}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent class="max-h-60 overflow-y-auto" />
+                </Select>
               </div>
 
-              {/* Group Participants */}
+              {/* Group Participants */
               <div class="flex flex-col gap-2">
                 <span class="text-sm font-medium">Participants (filtered by global + selected tests)</span>
-                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-40 overflow-y-auto border rounded p-2">
-                  <For each={getFilteredParticipants(group)}>
-                    {(participant) => (
-                      <label class="flex items-center space-x-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={group.participants.includes(participant)}
-                          onChange={(e) => {
-                            const next = e.currentTarget.checked
-                              ? [...group.participants, participant]
-                              : group.participants.filter((p) => p !== participant);
-                            updateGroup(group.id, { participants: next });
-                          }}
-                        />
-                        <span class="truncate">{participant}</span>
-                        <span class="text-xs text-muted-foreground">({isQacMap()[participant] ? 'QAC' : 'Non-QAC'})</span>
-                      </label>
-                    )}
-                  </For>
+                <div class="flex flex-wrap gap-2">
+                  <For each={group.participants}>{(p) => (
+                    <span class="text-xs px-2 py-0.5 rounded border inline-flex items-center gap-1">
+                      {p}
+                      <button class="text-muted-foreground" onClick={() => updateGroup(group.id, { participants: group.participants.filter(x => x !== p) })}>×</button>
+                    </span>
+                  )}</For>
                 </div>
+                <Select
+                  value={getGroupPick(pickParticipantByGroup, group.id)}
+                  onChange={(v) => {
+                    const val = v || "";
+                    setGroupPick(setPickParticipantByGroup, group.id, "");
+                    if (val && !group.participants.includes(val)) updateGroup(group.id, { participants: [...group.participants, val] });
+                  }}
+                  options={getFilteredParticipants(group).filter(p => !group.participants.includes(p))}
+                  itemComponent={(pp) => {
+                    const p = pp.item.rawValue as string;
+                    const isQac = !!isQacMap()[p];
+                    return (
+                      <SelectItem item={pp.item}>
+                        <div class="flex w-full items-center justify-between">
+                          <span class="truncate">{p}</span>
+                          <span class={`px-1.5 py-0.5 rounded text-[10px] font-medium ${isQac ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{isQac ? 'QAC' : 'Non-QAC'}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  }}
+                >
+                  <SelectTrigger class="w-full">
+                    <SelectValue>{getGroupPick(pickParticipantByGroup, group.id) || 'Add participant'}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent class="max-h-60 overflow-y-auto" />
+                </Select>
               </div>
 
-              {/* Group Recordings */}
+              {/* Group Recordings */
               <div class="flex flex-col gap-2">
                 <span class="text-sm font-medium">Recordings (Participant | Timeline)</span>
-                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-40 overflow-y-auto border rounded p-2">
-                  <For each={getFilteredRecordings(group)}>
-                    {(rec) => (
-                      <label class="flex items-center space-x-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={group.recordings.includes(rec)}
-                          onChange={(e) => {
-                            const next = e.currentTarget.checked
-                              ? [...group.recordings, rec]
-                              : group.recordings.filter((r) => r !== rec);
-                            updateGroup(group.id, { recordings: next });
-                          }}
-                        />
-                        <span class="truncate">{rec}</span>
-                      </label>
-                    )}
-                  </For>
+                <div class="flex flex-wrap gap-2">
+                  <For each={group.recordings}>{(r) => (
+                    <span class="text-xs px-2 py-0.5 rounded border inline-flex items-center gap-1">
+                      {r}
+                      <button class="text-muted-foreground" onClick={() => updateGroup(group.id, { recordings: group.recordings.filter(x => x !== r) })}>×</button>
+                    </span>
+                  )}</For>
                 </div>
+                <Select
+                  value={getGroupPick(pickRecordingByGroup, group.id)}
+                  onChange={(v) => {
+                    const val = v || "";
+                    setGroupPick(setPickRecordingByGroup, group.id, "");
+                    if (val && !group.recordings.includes(val)) updateGroup(group.id, { recordings: [...group.recordings, val] });
+                  }}
+                  options={getFilteredRecordings(group).filter(r => !group.recordings.includes(r))}
+                  itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}
+                >
+                  <SelectTrigger class="w-full">
+                    <SelectValue>{getGroupPick(pickRecordingByGroup, group.id) || 'Add recording'}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent class="max-h-60 overflow-y-auto" />
+                </Select>
               </div>
 
               {/* Meta Filters */}
