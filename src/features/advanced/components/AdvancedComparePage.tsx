@@ -371,8 +371,8 @@ export default function AdvancedComparePage() {
   createEffect(async () => {
     const t = currentTest(); if (!t) return;
     const plist = selParticipants();
-    const map: Record<string, Session[]> = { ...sessionsByPart() };
-    const sel: Record<string, Record<string, boolean>> = { ...selectedSessions() };
+    const map: Record<string, Session[]> = { ...untrack(sessionsByPart) };
+    const sel: Record<string, Record<string, boolean>> = { ...untrack(selectedSessions) };
     for (const p of plist) {
       const ss = await getTimelineRecordings({ testName: t!, participants: [p] }).catch(() => []);
       map[p] = ss.map(s => ({ timeline: s.timeline, recording: s.recording }));
