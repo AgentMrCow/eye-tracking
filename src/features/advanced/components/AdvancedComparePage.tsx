@@ -2,747 +2,722 @@ import { For, Show, createEffect, createMemo, createSignal, untrack, onMount } f
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { NumberField, NumberFieldInput } from "@/components/ui/number-field";
-import { LineChart } from "@/components/ui/charts";
+import { Slider, SliderFill, SliderThumb, SliderTrack } from "@/components/ui/slider";
 import JsonViewer from "@/components/ui/json-viewer";
 
-import { getAllCatalog, getGazeData, getParticipants, getTimelineRecordings, getWordWindows } from "@/features/gaze/services/gazeApi";
-import { getStatic, getParticipantsTableRaw, searchSlicesRaw } from "@/shared/tauriClient";
-import type { SearchSliceRow } from "@/shared/type";
-// removed unused imports
+import { getAllCatalog, getGazeData, getTimelineRecordings } from "@/features/gaze/services/gazeApi";
+import { getStatic, getParticipantsTableRaw } from "@/shared/tauriClient";
 import { boxesFor } from "@/features/catalog/utils";
 import { ALL_AOI_KEYS, AOI_KEY_LABEL } from "@/features/catalog/constants";
-import { bootstrapCI, buildBins, clusterPermutation } from "../analysis";
-import { loadComparePrefs, saveComparePrefs, type ComparePrefs } from "@/shared/prefs";
-import { getParticipantsForTest } from "@/features/gaze/services/gazeApi";
+
+interface Session {
+  timeline: string;
+  recording: string;
+}
+
+interface CompareGroup {
+  id: string;
+  name: string;
+  tests: string[];
+  participants: string[];
+  recordings: string[];
+  metaFilters: {
+    truthValue: string;
+    morpheme: string;
+    position: string;
+    series: string;
+    group: string;
+  };
+}
 
 export default function AdvancedComparePage() {
+  // Global data
   const [catalog, setCatalog] = createSignal<any[]>([]);
   const [tests, setTests] = createSignal<string[]>([]);
-  const [selTests, setSelTests] = createSignal<string[]>([]);
   const [participants, setParticipants] = createSignal<string[]>([]);
-  const [allTestNames, setAllTestNames] = createSignal<string[]>([]);
   const [isQacMap, setIsQacMap] = createSignal<Record<string, boolean>>({});
   const [partsByTest, setPartsByTest] = createSignal<Record<string, string[]>>({});
-  const [selParticipants, setSelParticipants] = createSignal<string[]>([]);
-  const [userClearedParticipants, setUserClearedParticipants] = createSignal(false);
-  const [catalogRow, setCatalogRow] = createSignal<any>(null);
-  const [wordWin, setWordWin] = createSignal<{ chinese_word: string; start_sec: number; end_sec: number }[]>([]);
-
-  // AOI sets selection (reuse labels/keys)
+  const [sessionsByPart, setSessionsByPart] = createSignal<Record<string, Session[]>>({});
+  
+  // Global selections
+  const [globalTests, setGlobalTests] = createSignal<string[]>([]);
+  const [globalParticipants, setGlobalParticipants] = createSignal<string[]>([]);
+  const [numGroups, setNumGroups] = createSignal<number>(2);
+  
+  // AOI threshold
+  const [thresholdPct, setThresholdPct] = createSignal<number>(50);
+  
+  // AOI sets selection
   const [blueKeys, setBlueKeys] = createSignal<string[]>(["correct_AOIs"]);
   const [redKeys, setRedKeys] = createSignal<string[]>(ALL_AOI_KEYS.filter(k => k !== "correct_AOIs"));
   const [invalidCats, setInvalidCats] = createSignal<("other" | "missing" | "out_of_screen")[]>(["missing"]);
-
-  // Anchor + bins
-  const [anchorMode, setAnchorMode] = createSignal<"manual" | "word">("word");
-  const [anchorWord, setAnchorWord] = createSignal<string>("");
-  const [analysisStartMs, setAnalysisStartMs] = createSignal<number>(0);
-  const [shiftMs, setShiftMs] = createSignal<number>(200);
-  const [binMs, setBinMs] = createSignal<number>(100);
-  const [numBins, setNumBins] = createSignal<number>(25);
-
-  // Stats params
-  const [nBoot, setNBoot] = createSignal<number>(300);
-  const [nPerm, setNPerm] = createSignal<number>(200);
-  const [alpha, setAlpha] = createSignal<number>(0.05);
-
-  // Meta filters
-  const [truths, setTruths] = createSignal<string[]>([]);
-  const [morphs, setMorphs] = createSignal<string[]>([]);
-  const [poss, setPoss] = createSignal<string[]>([]);
-  const [series, setSeries] = createSignal<string[]>([]);
-  const [groups, setGroups] = createSignal<string[]>([]);
-  const [qacFilter, setQacFilter] = createSignal<"all" | "qac" | "nonqac">("all");
-  const [truthF, setTruthF] = createSignal("all");
-  const [morphF, setMorphF] = createSignal("all");
-  const [posF, setPosF] = createSignal("all");
-  const [seriesF, setSeriesF] = createSignal("all");
-  const [groupF, setGroupF] = createSignal("all");
-
-  // Sessions selection
-  type Session = { timeline: string; recording: string };
-  const [sessionsByPart, setSessionsByPart] = createSignal<Record<string, Session[]>>({});
-  const [selectedSessions, setSelectedSessions] = createSignal<Record<string, Record<string, boolean>>>({});
-
+  
+  // Compare groups
+  const [compareGroups, setCompareGroups] = createSignal<CompareGroup[]>([
+    {
+      id: "group1",
+      name: "Group 1",
+      tests: [],
+      participants: [],
+      recordings: [],
+      metaFilters: {
+        truthValue: "all",
+        morpheme: "all", 
+        position: "all",
+        series: "all",
+        group: "all"
+      }
+    },
+    {
+      id: "group2", 
+      name: "Group 2",
+      tests: [],
+      participants: [],
+      recordings: [],
+      metaFilters: {
+        truthValue: "all",
+        morpheme: "all",
+        position: "all", 
+        series: "all",
+        group: "all"
+      }
+    }
+  ]);
+  
   // Results
-  const [curve, setCurve] = createSignal<any>(null);
-  const [sig, setSig] = createSignal<{ mask: boolean[]; clusters: any[] } | null>(null);
+  const [results, setResults] = createSignal<any>(null);
   const [running, setRunning] = createSignal(false);
-  const [aggMode, setAggMode] = createSignal<"mean" | "median" | "weighted">("mean");
-  const [multiTest, setMultiTest] = createSignal(false);
 
-  // Helper: compare arrays as sets (order-insensitive)
-  const sameSet = (a: string[], b: string[]) => {
-    if (a.length !== b.length) return false;
-    const s = new Set(a);
-    for (const x of b) if (!s.has(x)) return false;
-    return true;
-  };
+  // Meta filter options
+  const [truthValues, setTruthValues] = createSignal<string[]>([]);
+  const [morphemes, setMorphemes] = createSignal<string[]>([]);
+  const [positions, setPositions] = createSignal<string[]>([]);
+  const [seriesOptions, setSeriesOptions] = createSignal<string[]>([]);
+  const [groupOptions, setGroupOptions] = createSignal<string[]>([]);
 
+  // Session management
+  const [currentTest, setCurrentTest] = createSignal<string>("");
+  const [selParticipants, setSelParticipants] = createSignal<string[]>([]);
+  const [selectedSessions, setSelectedSessions] = createSignal<Record<string, string[]>>({});
+
+  // Initialize with onMount and load initial data
   onMount(async () => {
-    try {
-      const cat = await getAllCatalog();
-      setCatalog(cat);
-      // console.log('Loaded catalog:', cat.length, 'entries');
-      
-      const g = await getStatic().catch((error) => {
-        console.error('Failed to get static data:', error);
-        return null as any;
-      });
-
-  // Debug watchers (disabled for production)
-  // createEffect(() => {
-  //   const v = selTests();
-  //   console.log('[AdvancedCompare] selTests changed:', v.length, v.slice(0,5), '...');
-  // });
-  // createEffect(() => {
-  //   const v = participantOptions();
-  //   console.log('[AdvancedCompare] participantOptions changed:', v.length);
-  // });
-  // createEffect(() => {
-  //   const v = selParticipants();
-  //   console.log('[AdvancedCompare] selParticipants changed:', v.length);
-  // });
-      
-      const partsByTestData = (g?.participants_by_test as Record<string, string[]>) || {};
-      setPartsByTest(partsByTestData);
-      // console.log('Loaded participants by test:', partsByTestData);
-      
-      const allParticipants = await getParticipants();
-      setParticipants(allParticipants);
-      // console.log('Loaded global participants:', allParticipants);
-      
-      const testNames = (g?.test_names as string[]) || [];
-      setAllTestNames(testNames);
-      // console.log('Loaded test names:', testNames);
-    // QAC map (participants table)
-    const ptab = await getParticipantsTableRaw().catch(() => [] as any[]);
-    const map: Record<string, boolean> = {};
-    for (const r of ptab as any[]) {
-      const name = (r.participant ?? r.Participant ?? r.participant_name ?? r.name ?? "").toString();
-      if (!name) continue;
-      const raw = (r.is_qac ?? r.IS_QAC ?? r.Is_QAC ?? r.IsQAC ?? r.isQAC ?? r.qac ?? "1").toString();
-      const val = raw === "1" || raw.toLowerCase() === "true";
-      map[name] = val;
-    }
-    // Fallback mapping if table absent: TLK311–TLK320 are non‑QAC, others QAC
-    if (Object.keys(map).length === 0) {
-      const allParts = await getParticipants().catch(() => [] as string[]);
-      const nq = new Set(Array.from({ length: 10 }, (_, i) => `TLK${311 + i}`));
-      const fb: Record<string, boolean> = {};
-      for (const p of allParts) {
-        const id = (p || "").trim();
-        fb[id] = !nq.has(id); // false for TLK311..TLK320
-      }
-      setIsQacMap(fb);
-    } else {
-      setIsQacMap(map);
-    }
-    // meta option lists
-    setTruths(Array.from(new Set(cat.map(r => r.truth_value || "").filter(Boolean))));
-    setMorphs(Array.from(new Set(cat.map(r => r.morpheme || "").filter(Boolean))));
-    setPoss(Array.from(new Set(cat.map(r => r.only_position || "").filter(Boolean))));
-    setSeries(Array.from(new Set(cat.map(r => r.series || "").filter(Boolean))));
-    setGroups(Array.from(new Set(cat.map(r => r.group || "").filter(Boolean))));
+    const [catalogData, participantsData, staticData] = await Promise.all([
+      getAllCatalog().catch(() => []),
+      getParticipantsTableRaw().catch(() => []),
+      getStatic().catch(() => ({ participants_by_test: {}, tests_by_participant: {} }))
+    ]);
     
-    // Merge participants_by_test from search_slices (always supplement static)
-    try {
-      const rows = await searchSlicesRaw().catch((error) => {
-        console.error('Failed to get search slices:', error);
-        return [] as SearchSliceRow[];
-      });
-      if (rows.length) {
-        // console.log('Loaded search slices:', rows.length, 'rows');
-        // IMPORTANT: avoid reading partsByTest() here to prevent effect self-dependency loops
-        const base = { ...partsByTestData };
-        const map = new Map<string, Set<string>>();
-        // seed with existing from static data snapshot
-        Object.entries(base).forEach(([t, arr]) => map.set(t, new Set(arr)));
-        for (const r of rows) {
-          const t = r.test_name; const p = r.participant_name;
-          if (!t || !p) continue;
-          if (!map.has(t)) map.set(t, new Set());
-          map.get(t)!.add(p);
-        }
-        const obj: Record<string, string[]> = {};
-        map.forEach((set, key) => obj[key] = Array.from(set));
-        setPartsByTest(obj);
-        // console.log('Updated participants by test with search slices:', obj);
-      }
-    } catch (error) {
-      console.error('Error processing search slices:', error);
-    }
-    } catch (error) {
-      console.error('Error in main initialization effect:', error);
+    setCatalog(catalogData);
+    setTests(Object.keys(staticData.participants_by_test || {}));
+    setParticipants(Object.keys(staticData.tests_by_participant || {}));
+    setPartsByTest(staticData.participants_by_test || {});
+    
+    // Build QAC map
+    const qacMap: Record<string, boolean> = {};
+    participantsData.forEach((p: any) => {
+      qacMap[p.participant] = Boolean(p.is_qac);
+    });
+    setIsQacMap(qacMap);
+    
+    // Extract meta filter options from catalog
+    const truths = Array.from(new Set(catalogData.map(c => c.truth_value).filter(Boolean)));
+    const morphs = Array.from(new Set(catalogData.map(c => c.morpheme).filter(Boolean)));
+    const pos = Array.from(new Set(catalogData.map(c => c.only_position).filter(Boolean)));
+    const series = Array.from(new Set(catalogData.map(c => c.series).filter(Boolean)));
+    const groups = Array.from(new Set(catalogData.map(c => c.group).filter(Boolean)));
+    
+    setTruthValues(truths as string[]);
+    setMorphemes(morphs as string[]);
+    setPositions(pos as string[]);
+    setSeriesOptions(series as string[]);
+    setGroupOptions(groups as string[]);
+    
+    // Set initial test selection if available
+    if (Object.keys(staticData.participants_by_test || {}).length > 0) {
+      const firstTest = Object.keys(staticData.participants_by_test || {})[0];
+      setCurrentTest(firstTest);
     }
   });
 
-  // Load persisted AOI preferences (shared with Catalog Compare)
+  // Fetch sessions for participants
   createEffect(async () => {
-    const prefs = await loadComparePrefs();
-    if (!prefs) return;
-    const allowed = new Set(ALL_AOI_KEYS as string[]);
-    const bk = (prefs.blueKeys || []).filter((k) => allowed.has(k));
-    if (bk.length) setBlueKeys(bk);
-    if (prefs.redCustom) {
-      const rk0 = (prefs.redKeys || []).filter((k) => allowed.has(k));
-      const rk = rk0.filter((k) => !bk.includes(k));
-      setRedKeys(rk.length ? rk : ALL_AOI_KEYS.filter((k) => !bk.includes(k)));
-    } else {
-      setRedKeys(ALL_AOI_KEYS.filter((k) => !bk.includes(k)));
-    }
-    const invAll = new Set(["missing", "out_of_screen", "other"] as const);
-    const inv = (prefs.invalidCats || []).filter((k) => invAll.has(k as any));
-    if (inv.length) setInvalidCats(inv as any);
-  });
-
-  // Persist AOI preferences whenever they change
-  createEffect(() => {
-    const prefs: ComparePrefs = {
-      blueKeys: blueKeys(),
-      redKeys: redKeys(),
-      redCustom: true,
-      invalidCats: invalidCats() as any,
-    };
-    saveComparePrefs(prefs);
-  });
-
-  // filtered tests by meta (QAC filter applies to participants, not test presence)
-  const filteredTests = createMemo(() => {
-    const fromCatalog = catalog().filter((r) =>
-      (groupF() === "all" || r.group === groupF()) &&
-      (truthF() === "all" || r.truth_value === truthF()) &&
-      (posF() === "all" || r.only_position === posF()) &&
-      (morphF() === "all" || r.morpheme === morphF()) &&
-      (seriesF() === "all" || r.series === seriesF())
-    ).map(r => r.test_name);
-    return fromCatalog.length ? fromCatalog : allTestNames();
-  });
-  createEffect(() => {
-    const ft = filteredTests();
-    setTests(ft);
-    // Keep current selection when filters don't change; only react to filter changes
-    const curArr = untrack(() => selTests());
-    const curSet = new Set(curArr);
-    const next = ft.filter(t => curSet.has(t));
-    const target = next.length ? next : ft;
-    if (!sameSet(target, curArr)) setSelTests(target);
-  });
-
-  // Derive a current test (first selected) for word anchors and AOI row context
-  const currentTest = createMemo(() => selTests()[0] || "");
-  createEffect(async () => {
-    const t = currentTest();
-    const qmap = isQacMap();
-    function isQac(p: string) { return (p in qmap) ? qmap[p] : true; }
-    if (!t) { setCatalogRow(null); setWordWin([]); /* don't thrash selParticipants here */ return; }
-    setCatalogRow(catalog().find(r => r.test_name === t) || null);
+    const gTests = globalTests();
+    const gParts = globalParticipants();
+    if (!gTests.length || !gParts.length) return;
     
-    try {
-      const wordWindows = await getWordWindows({ testName: t });
-      setWordWin(wordWindows || []);
-    } catch (error) {
-      console.error(`Failed to fetch word windows for test ${t}:`, error);
-      setWordWin([]);
-    }
+    const sessionMap: Record<string, Session[]> = {};
     
-    // default participants = union across selected tests
-    const all = selTests().flatMap(tt => partsByTest()[tt] || []);
-    let uniq = Array.from(new Set(all));
-    
-    // console.log(`Current test: ${t}, all participants from selected tests:`, uniq);
-    
-    if (qacFilter() === "qac") uniq = uniq.filter(isQac);
-    else if (qacFilter() === "nonqac") uniq = uniq.filter((p) => !isQac(p));
-    
-    // console.log(`After QAC filter '${qacFilter()}':`, uniq);
-    
-    // Auto-select all participants when they become available
-    if (uniq.length > 0) {
-      const currentSelected = selParticipants();
-      // Always auto-select all available participants when the list changes
-      if (currentSelected.length === 0) {
-        // console.log('Auto-selecting participants:', uniq);
-        setSelParticipants(uniq);
+    for (const part of gParts) {
+      const allSessions: Session[] = [];
+      for (const test of gTests) {
+        const sessions = await getTimelineRecordings({ 
+          testName: test, 
+          participants: [part] 
+        }).catch(() => []);
+        allSessions.push(...sessions.map(s => ({ timeline: s.timeline, recording: s.recording })));
       }
+      sessionMap[part] = allSessions;
     }
+    
+    setSessionsByPart(sessionMap);
   });
 
-  // Auto-select participants when participant options change
+  // Session selection management with untrack to prevent infinite loops
   createEffect(() => {
-    const availableParticipants = participantOptions();
-    const currentSelected = selParticipants();
-    const userCleared = userClearedParticipants();
+    const test = currentTest();
+    const parts = selParticipants();
     
-    // If no participants are selected and participants are available, select all (unless user explicitly cleared)
-    if (currentSelected.length === 0 && availableParticipants.length > 0 && !userCleared) {
-      // console.log('Auto-selecting all available participants:', availableParticipants);
-      setSelParticipants(availableParticipants);
+    if (!test || !parts.length) {
+      setSelectedSessions({});
+      return;
     }
-    // If some participants are selected but they're no longer available, filter them out
-    else if (currentSelected.length > 0) {
-      const validSelected = currentSelected.filter(p => availableParticipants.includes(p));
-      if (validSelected.length !== currentSelected.length) {
-        setSelParticipants(validSelected);
-      }
-    }
-  });
 
-  // options shown in the Participants select (test-scoped + QAC filtered)
-  const participantOptions = createMemo(() => {
-    const qmap = isQacMap();
-    function isQac(p: string) { return (p in qmap) ? qmap[p] : true; }
-    const selectedTests = selTests();
+    const newSessions: Record<string, string[]> = { ...untrack(selectedSessions) };
+    const currentSessionsByPart = { ...untrack(sessionsByPart) };
     
-    let opts: string[] = [];
-    
-    if (selectedTests.length > 0) {
-      // Get participants for selected tests
-      const allSel = selectedTests.flatMap(t => partsByTest()[t] || []);
-      opts = Array.from(new Set(allSel));
-    }
-    
-    if (!opts.length) {
-      // Fallback to all participants from partsByTest or global participants
-      const allMap = Array.from(new Set(Object.values(partsByTest()).flat()));
-      opts = allMap.length ? allMap : participants();
-    }
-    
-    // Apply QAC filtering
-    if (qacFilter() === "qac") opts = opts.filter(isQac);
-    else if (qacFilter() === "nonqac") opts = opts.filter(p => !isQac(p));
-    
-    return opts;
-  });
-
-  // Use a ref to track fetched tests without creating reactive dependencies
-  let fetchedTestsRef = new Set<string>();
-  // Track in-flight requests to avoid concurrent duplicates
-  let inFlightFetchRef = new Set<string>();
-
-  // Prefetch participants (only for current test) to avoid flooding the backend
-  createEffect(() => {
-    const ct = currentTest();
-    if (!ct) return;
-    
-    // Only fetch current test if it doesn't have participants and isn't currently being fetched or fetched already
-    const testsToFetch = [ct].filter(t =>
-      (!partsByTest()[t] || partsByTest()[t].length === 0) &&
-      !inFlightFetchRef.has(t) &&
-      !fetchedTestsRef.has(t)
-    );
-    
-    if (!testsToFetch.length) return;
-    
-    // Mark as in-flight immediately
-    testsToFetch.forEach(t => inFlightFetchRef.add(t));
-    
-    // Fetch participants for each test (non-reactive)
-    testsToFetch.forEach(async (testName) => {
-      try {
-        // console.log(`Fetching participants for test: ${testName}`);
-        const fetched = await getParticipantsForTest(testName);
-        
-        if (fetched && fetched.length > 0) {
-          // console.log(`Fetched ${fetched.length} participants for test ${testName}:`, fetched);
-          setPartsByTest(prev => {
-            const prevArr = prev[testName] || [];
-            // Avoid redundant state updates
-            if (prevArr.length === fetched.length && prevArr.every((v, i) => v === fetched[i])) return prev;
-            return { ...prev, [testName]: fetched };
-          });
-        } else {
-          console.warn(`No participants found for test ${testName}`);
-          setPartsByTest(prev => ({ ...prev, [testName]: [] }));
-        }
-      } catch (error) {
-        console.error(`Failed to fetch participants for test ${testName}:`, error);
-        setPartsByTest(prev => ({ ...prev, [testName]: [] }));
-      } finally {
-        // Mark as fetched and clear in-flight
-        inFlightFetchRef.delete(testName);
-        fetchedTestsRef.add(testName);
+    parts.forEach(part => {
+      const sessions = currentSessionsByPart[part] || [];
+      if (!newSessions[part]) {
+        newSessions[part] = sessions.map(s => `${s.timeline}|${s.recording}`);
       }
     });
+    
+    setSelectedSessions(newSessions);
   });
 
-  // Prefetch sessions per participant and initialize selections (all included)
-  createEffect(async () => {
-    const t = currentTest(); if (!t) return;
-    const plist = selParticipants();
-    const map: Record<string, Session[]> = { ...untrack(sessionsByPart) };
-    const sel: Record<string, Record<string, boolean>> = { ...untrack(selectedSessions) };
-    for (const p of plist) {
-      const ss = await getTimelineRecordings({ testName: t!, participants: [p] }).catch(() => []);
-      map[p] = ss.map(s => ({ timeline: s.timeline, recording: s.recording }));
-      sel[p] = sel[p] || {};
-      for (const s of map[p]) { sel[p][`${s.timeline}|${s.recording}`] = sel[p][`${s.timeline}|${s.recording}`] ?? true; }
-    }
-    setSessionsByPart(map);
-    setSelectedSessions(sel);
-  });
-
-  const canRun = createMemo(() => selTests().length > 0 && selParticipants().length > 0);
-
-  async function generate() {
-    if (!canRun()) return;
-    setRunning(true); setCurve(null); setSig(null);
-    const invalid = new Set<string>(invalidCats());
-    const xSec = Array.from({ length: numBins() }, (_, i) => ((i + 0.5) * binMs()) / 1000);
-    function median(arr: number[]): number { const a = [...arr].sort((x,y)=>x-y); const m=Math.floor(a.length/2); return a.length%2?a[m]: (a[m-1]+a[m])/2; }
-    const perParticipant: number[][] = [];
-
-    const processTest = async (tname: string, plist: string[]) => {
-      const row = catalog().find(r => r.test_name === tname) as any;
-      const blueBoxes = boxesFor(row, blueKeys() as any);
-      const redBoxes  = boxesFor(row, redKeys().filter(k => !blueKeys().includes(k)) as any);
-      for (const p of plist) {
-        const sess = await getTimelineRecordings({ testName: tname, participants: [p] }).catch(() => []);
-        const perSessionVals: { eff: number[]; w: number[] }[] = [];
-        for (const s of sess) {
-          const data = await getGazeData({ testName: tname, participants: [p], timeline: s.timeline, recording: s.recording }).catch(() => []);
-          if (!data.length) continue;
-          const baseMs = +new Date(data[0].timestamp);
-          let anchorAbs = baseMs + (analysisStartMs() || 0);
-          if (anchorMode() === 'word') {
-            const ww = wordWin().find(w => w.chinese_word === anchorWord());
-            if (ww) anchorAbs = baseMs + (ww.start_sec * 1000);
+  // Update number of groups
+  createEffect(() => {
+    const n = numGroups();
+    const current = compareGroups();
+    
+    if (n > current.length) {
+      // Add new groups
+      const newGroups = [...current];
+      for (let i = current.length; i < n; i++) {
+        newGroups.push({
+          id: `group${i + 1}`,
+          name: `Group ${i + 1}`,
+          tests: [],
+          participants: [],
+          recordings: [],
+          metaFilters: {
+            truthValue: "all",
+            morpheme: "all",
+            position: "all",
+            series: "all",
+            group: "all"
           }
-          anchorAbs += shiftMs();
-          const bins = buildBins(data, anchorAbs, binMs(), numBins(), invalid, blueBoxes, redBoxes);
-          perSessionVals.push({ eff: bins.map(b => (b.bluePct - b.redPct)), w: bins.map(b => b.validN) });
-        }
-        if (!perSessionVals.length) continue;
-        const T = numBins();
-        const arr: number[] = [];
-        for (let i = 0; i < T; i++) {
-          const vals = perSessionVals.map(s => s.eff[i] ?? 0);
-          if (aggMode() === 'median') arr.push(median(vals));
-          else if (aggMode() === 'weighted') {
-            const ws = perSessionVals.map(s => s.w[i] ?? 0);
-            const sumW = ws.reduce((a,b)=>a+b,0);
-            arr.push(sumW>0 ? vals.reduce((a,v,idx)=>a+v*ws[idx],0)/sumW : (vals.reduce((a,v)=>a+v,0)/vals.length));
-          } else {
-            arr.push(vals.reduce((a,v)=>a+v,0)/vals.length);
-          }
-        }
-        perParticipant.push(arr);
+        });
       }
-    };
-
-    // Iterate selected tests and their allowed participants
-    const qmap = isQacMap();
-    const isQ = (p: string) => (p in qmap) ? qmap[p] : true;
-    for (const tname of selTests()) {
-      let plist = selParticipants();
-      // Ensure participants actually belong to this test
-      const allowedAll = partsByTest()[tname] || [];
-      plist = plist.filter(p => allowedAll.includes(p));
-      if (qacFilter() === 'qac') plist = plist.filter(isQ);
-      else if (qacFilter() === 'nonqac') plist = plist.filter(p => !isQ(p));
-      await processTest(tname, plist);
+      setCompareGroups(newGroups);
+    } else if (n < current.length) {
+      // Remove excess groups
+      setCompareGroups(current.slice(0, n));
     }
-    if (!perParticipant.length) { setRunning(false); return; }
-    const agg = bootstrapCI(perParticipant, xSec, nBoot(), alpha());
-    setCurve(agg);
-    const sigRes = clusterPermutation(perParticipant, 2.0, nPerm());
-    setSig(sigRes);
-    setRunning(false);
-  }
-
-  const viz = createMemo(() => {
-    const c = curve(); if (!c) return { datasets: [] };
-    const mask = sig()?.mask || [];
-    const base = [
-      { label: "Mean(%Blue-%Red)", data: c.xSec.map((x: number, i: number) => ({ x, y: c.mean[i] })), borderColor: "#2563eb", pointRadius: 0, borderWidth: 1.5, tension: 0.2 },
-      { label: "CI Low", data: c.xSec.map((x: number, i: number) => ({ x, y: c.ciLow[i] })), borderColor: "#93c5fd", pointRadius: 0, borderDash: [4,4], borderWidth: 1, tension: 0 },
-      { label: "CI High", data: c.xSec.map((x: number, i: number) => ({ x, y: c.ciHigh[i] })), borderColor: "#93c5fd", pointRadius: 0, borderDash: [4,4], borderWidth: 1, tension: 0 },
-    ];
-    // significance shading via a background dataset by duplicating mask (optional)
-    const shade = c.xSec.map((x: number, i: number) => ({ x, y: mask[i] ? c.mean[i] : null }));
-    const dsShade = { label: "Significant cluster", data: shade, borderColor: "rgba(34,197,94,0.8)", backgroundColor: "rgba(34,197,94,0.15)", pointRadius: 0, borderWidth: 0, fill: true, tension: 0 } as any;
-    return { datasets: [...base, dsShade] };
   });
+
+  // Computed values using createMemo for performance
+  const filteredTestsByGroup = createMemo(() => {
+    const catalogMap = new Map(catalog().map(c => [c.test_name, c]));
+    const groupMap = new Map<string, string[]>();
+    
+    compareGroups().forEach(group => {
+      const filtered = globalTests().filter(test => {
+        const cat = catalogMap.get(test);
+        if (!cat) return true;
+        
+        const filters = group.metaFilters;
+        return (
+          (filters.truthValue === "all" || cat.truth_value === filters.truthValue) &&
+          (filters.morpheme === "all" || cat.morpheme === filters.morpheme) &&
+          (filters.position === "all" || cat.only_position === filters.position) &&
+          (filters.series === "all" || cat.series === filters.series) &&
+          (filters.group === "all" || cat.group === filters.group)
+        );
+      });
+      groupMap.set(group.id, filtered);
+    });
+    
+    return groupMap;
+  });
+
+  // Filtered options for each group
+  const getFilteredTests = (group: CompareGroup) => {
+    return filteredTestsByGroup().get(group.id) || [];
+  };
+
+  const getFilteredParticipants = (group: CompareGroup) => {
+    // Filter participants based on selected tests in the group
+    if (!group.tests.length) return globalParticipants();
+    
+    const allowedParts = new Set<string>();
+    group.tests.forEach(test => {
+      const parts = partsByTest()[test] || [];
+      parts.forEach(p => allowedParts.add(p));
+    });
+    
+    return globalParticipants().filter(p => allowedParts.has(p));
+  };
+
+  const getFilteredRecordings = (group: CompareGroup) => {
+    if (!group.participants.length) return [];
+    
+    const allRecordings = new Set<string>();
+    group.participants.forEach(part => {
+      const sessions = sessionsByPart()[part] || [];
+      sessions.forEach(s => allRecordings.add(`${part} | ${s.timeline}`));
+    });
+    
+    return Array.from(allRecordings);
+  };
+
+  // Update group
+  const updateGroup = (groupId: string, updates: Partial<CompareGroup>) => {
+    setCompareGroups(groups => 
+      groups.map(g => g.id === groupId ? { ...g, ...updates } : g)
+    );
+  };
+
+  // Generate comparison
+  async function generateComparison() {
+    setRunning(true);
+    setResults(null);
+    
+    try {
+      // Process each group and calculate blue vs red percentages
+      const groupResults = [];
+      
+      for (const group of compareGroups()) {
+        if (!group.tests.length || !group.participants.length) continue;
+        
+        const groupData = [];
+        
+        for (const test of group.tests) {
+          for (const part of group.participants) {
+            const sessions = sessionsByPart()[part] || [];
+            const relevantSessions = sessions.filter(s => 
+              group.recordings.includes(`${part} | ${s.timeline}`)
+            );
+            
+            for (const session of relevantSessions) {
+              const gazeData = await getGazeData({
+                testName: test,
+                participants: [part],
+                timeline: session.timeline,
+                recording: session.recording
+              }).catch(() => []);
+              
+              if (!gazeData.length) continue;
+              
+              // Calculate blue vs red percentages
+              const catalogRow = catalog().find(c => c.test_name === test);
+              if (!catalogRow) continue;
+              
+              const blueBoxes = new Set(boxesFor(catalogRow, blueKeys()));
+              const redBoxes = new Set(boxesFor(catalogRow, redKeys()));
+              const invalid = new Set(invalidCats());
+              
+              let blueCount = 0, redCount = 0, totalValid = 0;
+              
+              gazeData.forEach(point => {
+                const box = point.box_name;
+                if (invalid.has(box as "other" | "missing" | "out_of_screen")) return;
+                
+                totalValid++;
+                if (blueBoxes.has(box as any)) blueCount++;
+                else if (redBoxes.has(box as any)) redCount++;
+              });
+              
+              if (totalValid > 0) {
+                const bluePct = (blueCount / totalValid) * 100;
+                const redPct = (redCount / totalValid) * 100;
+                const blueOverRed = totalValid > 0 ? bluePct / (bluePct + redPct) * 100 : 0;
+                
+                groupData.push({
+                  test,
+                  participant: part,
+                  session: `${session.timeline}|${session.recording}`,
+                  bluePct,
+                  redPct,
+                  blueOverRed,
+                  aboveThreshold: blueOverRed >= thresholdPct()
+                });
+              }
+            }
+          }
+        }
+        
+        groupResults.push({
+          group: group.name,
+          data: groupData,
+          avgBlueOverRed: groupData.length > 0 ? 
+            groupData.reduce((sum, d) => sum + d.blueOverRed, 0) / groupData.length : 0,
+          aboveThresholdPct: groupData.length > 0 ?
+            (groupData.filter(d => d.aboveThreshold).length / groupData.length) * 100 : 0
+        });
+      }
+      
+      setResults({ groups: groupResults, threshold: thresholdPct() });
+    } catch (error) {
+      console.error("Error generating comparison:", error);
+    } finally {
+      setRunning(false);
+    }
+  }
 
   return (
     <div class="space-y-6">
+      {/* Global Controls */}
       <Card>
-        <CardHeader><CardTitle>Advanced Compare (multi‑participant, CI + permutation)</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Advanced Compare - Cantonese "Only" Comprehension Analysis</CardTitle>
+        </CardHeader>
         <CardContent class="space-y-4">
-          <div class="flex flex-wrap items-end gap-3 mb-2">
-            <div class="flex flex-col gap-1">
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-muted-foreground">Test ({tests().length} available)</span>
-                <div class="flex gap-1">
-                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => setSelTests(tests())}>All</Button>
-                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => setSelTests([])}>None</Button>
-                </div>
+          {/* Global Test Selection */}
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium">Global Tests ({tests().length} available)</span>
+              <div class="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setGlobalTests(tests())}>All</Button>
+                <Button size="sm" variant="outline" onClick={() => setGlobalTests([])}>None</Button>
               </div>
-              <Select<string> multiple value={selTests()} onChange={setSelTests} options={tests()}
-                itemComponent={(pp) => {
-                  const tname = pp.item.rawValue as string;
-                  const plist = (partsByTest()[tname] || []);
-                  const qmap = isQacMap();
-                  let q = 0, nq = 0;
-                  for (const p of plist) { ((p in qmap) ? qmap[p] : true) ? q++ : nq++; }
-                  return (
-                    <SelectItem item={pp.item}>
-                      <div class="flex w-full items-center justify-between gap-3">
-                        <span>{tname}</span>
-                        <span class="text-xs text-muted-foreground">Q {q} · NQ {nq}</span>
-                      </div>
-                    </SelectItem>
-                  );
-                }}
+            </div>
+            <div class="space-y-2">
+              <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-40 overflow-y-auto border rounded p-2">
+                <For each={tests()}>
+                  {(test) => (
+                    <label class="flex items-center space-x-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={globalTests().includes(test)}
+                        onChange={(e) => {
+                          if (e.currentTarget.checked) {
+                            setGlobalTests([...globalTests(), test]);
+                          } else {
+                            setGlobalTests(globalTests().filter(t => t !== test));
+                          }
+                        }}
+                      />
+                      <span class="truncate">{test}</span>
+                      <span class="text-xs text-muted-foreground">({(partsByTest()[test] || []).length})</span>
+                    </label>
+                  )}
+                </For>
+              </div>
+            </div>
+          </div>
+
+          {/* Global Participant Selection */}
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium">Global Participants ({participants().length} available)</span>
+              <div class="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setGlobalParticipants(participants())}>All</Button>
+                <Button size="sm" variant="outline" onClick={() => setGlobalParticipants([])}>None</Button>
+              </div>
+            </div>
+            <div class="space-y-2">
+              <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-40 overflow-y-auto border rounded p-2">
+                <For each={participants()}>
+                  {(participant) => (
+                    <label class="flex items-center space-x-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={globalParticipants().includes(participant)}
+                        onChange={(e) => {
+                          if (e.currentTarget.checked) {
+                            setGlobalParticipants([...globalParticipants(), participant]);
+                          } else {
+                            setGlobalParticipants(globalParticipants().filter(p => p !== participant));
+                          }
+                        }}
+                      />
+                      <span class="truncate">{participant}</span>
+                      <span class="text-xs text-muted-foreground">({isQacMap()[participant] ? 'QAC' : 'Non-QAC'})</span>
+                    </label>
+                  )}
+                </For>
+              </div>
+            </div>
+          </div>
+
+          {/* Number of Groups */}
+          <div class="flex items-center gap-4">
+            <span class="text-sm font-medium">Number of Compare Groups:</span>
+            <Select
+              value={numGroups()}
+              onChange={setNumGroups}
+              options={[2, 3, 4, 5]}
+              itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}
+            >
+              <SelectTrigger class="w-32">
+                <SelectValue>{String(numGroups())}</SelectValue>
+              </SelectTrigger>
+              <SelectContent />
+            </Select>
+          </div>
+
+          {/* Threshold Slider */}
+          <div class="flex items-center gap-4">
+            <span class="text-sm font-medium">Blue vs Red Threshold:</span>
+            <div class="flex-1 max-w-xs">
+              <Slider 
+                value={[thresholdPct()]} 
+                minValue={0} 
+                maxValue={100} 
+                step={1}
+                onChange={(v) => setThresholdPct(v[0] ?? 50)}
               >
-              <SelectTrigger class="w-72"><span>{selTests().length ? `${selTests().length} selected` : 'No tests selected'}</span></SelectTrigger>
-                <SelectContent class="max-h-60 overflow-y-auto" />
-              </Select>
+                <SliderTrack><SliderFill /></SliderTrack>
+                <SliderThumb />
+              </Slider>
             </div>
-            <div class="flex flex-col gap-1">
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-muted-foreground">Participants ({participantOptions().length} available)</span>
-                <div class="flex gap-1">
-                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => {
-                    setUserClearedParticipants(false);
-                    setSelParticipants(participantOptions());
-                  }}>All</Button>
-                  <Button size="sm" variant="outline" class="text-xs h-6 px-2" onClick={() => {
-                    setUserClearedParticipants(true);
-                    setSelParticipants([]);
-                  }}>None</Button>
-                </div>
-              </div>
-              <Select<string> multiple value={selParticipants()} onChange={(newVal) => {
-                setUserClearedParticipants(false);
-                setSelParticipants(newVal);
-              }} options={participantOptions()}
-                itemComponent={(pp) => {
-                  const name = pp.item.rawValue as string;
-                  const qmap = isQacMap();
-                  const q = (name in qmap) ? qmap[name] : true;
-                  return (
-                    <SelectItem item={pp.item}>
-                      <div class="flex w-full items-center justify-between gap-3">
-                        <span>{name}</span>
-                        <span class={`px-1.5 py-0.5 rounded text-[10px] font-medium ${q ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{q ? 'QAC' : 'Non‑QAC'}</span>
-                      </div>
-                    </SelectItem>
-                  );
-                }}
-              >
-                <SelectTrigger class="w-[420px]"><span>{selParticipants().length ? `${selParticipants().length} selected` : (participantOptions().length > 0 ? 'No participants selected' : 'No participants available')}</span></SelectTrigger>
-                <SelectContent class="max-h-60 overflow-y-auto" />
-              </Select>
-            </div>
-            <div class="ml-auto flex items-end gap-3">
-              <div class="flex items-center gap-2 text-sm">
-                <span>Bin</span>
-                <NumberField value={binMs()} class="w-24"><NumberFieldInput min={50} max={2000} onInput={(e) => setBinMs(Math.max(1, +e.currentTarget.value || 1))} /></NumberField>
-                <span>ms</span>
-              </div>
-              <div class="flex items-center gap-2 text-sm">
-                <span>Bins</span>
-                <NumberField value={numBins()} class="w-20"><NumberFieldInput min={5} max={100} onInput={(e) => setNumBins(Math.max(1, +e.currentTarget.value || 1))} /></NumberField>
-              </div>
-              <div class="flex items-center gap-2 text-sm">
-                <span>Shift</span>
-                <NumberField value={shiftMs()} class="w-20"><NumberFieldInput min={0} max={2000} onInput={(e) => setShiftMs(Math.max(0, +e.currentTarget.value || 0))} /></NumberField>
-                <span>ms</span>
-              </div>
+            <span class="text-sm font-mono w-12">{thresholdPct()}%</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* AOI Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle>AOI Configuration</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          {/* Blue AOIs */}
+          <div class="flex flex-col gap-2">
+            <span class="text-sm font-medium">Blue AOIs (Positive)</span>
+            <div class="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto border rounded p-2">
+              <For each={ALL_AOI_KEYS}>
+                {(key) => (
+                  <label class="flex items-center space-x-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={blueKeys().includes(key)}
+                      onChange={(e) => {
+                        if (e.currentTarget.checked) {
+                          setBlueKeys([...blueKeys(), key]);
+                        } else {
+                          setBlueKeys(blueKeys().filter(k => k !== key));
+                        }
+                      }}
+                    />
+                    <span class="truncate">{AOI_KEY_LABEL[key as keyof typeof AOI_KEY_LABEL]}</span>
+                  </label>
+                )}
+              </For>
             </div>
           </div>
 
-          <div class="rounded border p-3 space-y-3">
-            <div class="text-sm font-medium">Meta filters (tests)</div>
-            <div class="flex flex-wrap items-end gap-3 text-sm">
-              <label class="flex items-center gap-2">QAC
-                <span class="text-[10px] ml-1 inline-flex items-center gap-1">
-                  <span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">QAC</span>
-                  <span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Non‑QAC</span>
-                </span>
-                <Select value={qacFilter()} onChange={(v) => setQacFilter((v as any) || 'all')} options={["all","qac","nonqac"]} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                  <SelectTrigger class="w-36"><SelectValue>{qacFilter()}</SelectValue></SelectTrigger>
-                  <SelectContent class="max-h-60 overflow-y-auto" />
-                </Select>
-              </label>
-              <label class="flex items-center gap-2">Group
-                <Select value={groupF()} onChange={(v) => setGroupF(v || 'all')} options={["all", ...groups()]} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                  <SelectTrigger class="w-44"><SelectValue>{groupF()}</SelectValue></SelectTrigger>
-                  <SelectContent class="max-h-60 overflow-y-auto" />
-                </Select>
-              </label>
-              <label class="flex items-center gap-2">Truth
-                <Select value={truthF()} onChange={(v) => setTruthF(v || 'all')} options={["all", ...truths()]} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                  <SelectTrigger class="w-44"><SelectValue>{truthF()}</SelectValue></SelectTrigger>
-                  <SelectContent class="max-h-60 overflow-y-auto" />
-                </Select>
-              </label>
-              <label class="flex items-center gap-2">Pos
-                <Select value={posF()} onChange={(v) => setPosF(v || 'all')} options={["all", ...poss()]} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                  <SelectTrigger class="w-44"><SelectValue>{posF()}</SelectValue></SelectTrigger>
-                  <SelectContent class="max-h-60 overflow-y-auto" />
-                </Select>
-              </label>
-              <label class="flex items-center gap-2">Morph
-                <Select value={morphF()} onChange={(v) => setMorphF(v || 'all')} options={["all", ...morphs()]} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                  <SelectTrigger class="w-44"><SelectValue>{morphF()}</SelectValue></SelectTrigger>
-                  <SelectContent class="max-h-60 overflow-y-auto" />
-                </Select>
-              </label>
-              <label class="flex items-center gap-2">Series
-                <Select value={seriesF()} onChange={(v) => setSeriesF(v || 'all')} options={["all", ...series()]} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                  <SelectTrigger class="w-44"><SelectValue>{seriesF()}</SelectValue></SelectTrigger>
-                  <SelectContent class="max-h-60 overflow-y-auto" />
-                </Select>
-              </label>
-            </div>
-          </div>
-
-          <div class="mt-3 grid gap-4 md:grid-cols-2">
-            <div class="rounded border p-3 space-y-2">
-              <div class="text-sm font-medium">AOI sets</div>
-              <div class="text-xs text-muted-foreground">Pick Blue and Red sets (from catalog AOIs for this test). Red excludes keys in Blue.</div>
-              <div class="flex flex-wrap items-center gap-2 text-xs">
-                <span class="font-medium">Blue</span>
-                <Button size="sm" variant="outline" onClick={() => { setBlueKeys(ALL_AOI_KEYS.slice()); setRedKeys([]); }}>Enable all</Button>
-                <Button size="sm" variant="outline" onClick={() => setBlueKeys([])}>Disable all</Button>
-                <Button size="sm" variant="outline" onClick={() => { setBlueKeys(["correct_AOIs"]); setRedKeys(ALL_AOI_KEYS.filter(k => k !== "correct_AOIs")); setInvalidCats(["missing"]); }}>Reset defaults</Button>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <For each={ALL_AOI_KEYS}>{k =>
-                  <button class={`px-2 py-0.5 border rounded text-xs ${blueKeys().includes(k) ? 'bg-blue-600 text-white' : 'bg-muted'}`}
-                          onClick={() => {
-                            const s = new Set(blueKeys()); s.has(k) ? s.delete(k) : s.add(k); setBlueKeys(Array.from(s));
-                            // ensure red excludes blue
-                            setRedKeys(redKeys().filter(x => !Array.from(s).includes(x)));
-                          }}>{AOI_KEY_LABEL[k] || k}</button>
-                }</For>
-              </div>
-              <div class="text-xs text-muted-foreground">Red set:</div>
-              <div class="flex flex-wrap items-center gap-2 text-xs">
-                <span class="font-medium">Red</span>
-                <Button size="sm" variant="outline" onClick={() => setRedKeys(ALL_AOI_KEYS.filter(k => !blueKeys().includes(k)))}>Enable all</Button>
-                <Button size="sm" variant="outline" onClick={() => setRedKeys([])}>Disable all</Button>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <For each={ALL_AOI_KEYS.filter(k => !blueKeys().includes(k))}>{k =>
-                  <button class={`px-2 py-0.5 border rounded text-xs ${redKeys().includes(k) ? 'bg-rose-600 text-white' : 'bg-muted'}`}
-                          onClick={() => {
-                            const s = new Set(redKeys()); s.has(k) ? s.delete(k) : s.add(k); setRedKeys(Array.from(s));
-                          }}>{AOI_KEY_LABEL[k] || k}</button>
-                }</For>
-              </div>
-              <div class="flex items-center gap-3 text-xs mt-2">
-                <label class="inline-flex items-center gap-1"><input type="checkbox" checked={invalidCats().includes('missing')} onChange={(e) => {
-                  const s = new Set(invalidCats()); e.currentTarget.checked ? s.add('missing') : s.delete('missing'); setInvalidCats(Array.from(s) as any);
-                }} /> missing</label>
-                <label class="inline-flex items-center gap-1"><input type="checkbox" checked={invalidCats().includes('out_of_screen')} onChange={(e) => {
-                  const s = new Set(invalidCats()); e.currentTarget.checked ? s.add('out_of_screen') : s.delete('out_of_screen'); setInvalidCats(Array.from(s) as any);
-                }} /> out_of_screen</label>
-                <label class="inline-flex items-center gap-1"><input type="checkbox" checked={invalidCats().includes('other')} onChange={(e) => {
-                  const s = new Set(invalidCats()); e.currentTarget.checked ? s.add('other') : s.delete('other'); setInvalidCats(Array.from(s) as any);
-                }} /> other</label>
-              </div>
-              <div class="text-[11px] text-muted-foreground mt-2">Defaults: Blue = <code>correct_AOIs</code>; Red = remaining AOIs; Invalid = <code>missing</code>.</div>
-            </div>
-
-            <div class="rounded border p-3 space-y-3">
-              <div class="text-sm font-medium">Anchor</div>
-              <div class="flex items-center gap-2 text-sm">
-                <Button size="sm" variant={anchorMode()==='manual' ? 'default' : 'outline'} onClick={() => setAnchorMode('manual')}>Manual</Button>
-                <Button size="sm" variant={anchorMode()==='word' ? 'default' : 'outline'} onClick={() => setAnchorMode('word')}>Word</Button>
-              </div>
-              <Show when={anchorMode()==='manual'}>
-                <div class="flex items-center gap-2 text-sm">
-                  <span>Start</span>
-                  <NumberField value={analysisStartMs()} class="w-28"><NumberFieldInput min={0} max={600000} onInput={(e) => setAnalysisStartMs(Math.max(0, +e.currentTarget.value || 0))} /></NumberField>
-                  <span>ms</span>
-                </div>
-              </Show>
-              <Show when={anchorMode()==='word'}>
-                <div class="flex items-center gap-2 text-sm">
-                  <span>Word</span>
-                  <Select value={anchorWord()} onChange={(v) => setAnchorWord(v || "")} options={wordWin().map(w => w.chinese_word)} itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}>
-                    <SelectTrigger class="w-56"><SelectValue>{anchorWord() || "Select word"}</SelectValue></SelectTrigger>
-                    <SelectContent class="max-h-60 overflow-y-auto" />
-                  </Select>
-                </div>
-              </Show>
-            </div>
-          </div>
-
-          
-
-          <div class="mt-3 grid gap-4 md:grid-cols-2">
-          <div class="rounded border p-3 space-y-2">
-            <div class="text-sm font-medium">Statistics</div>
-            <div class="flex flex-wrap items-center gap-2 text-sm">
-              <span>Bootstrap</span>
-              <NumberField value={nBoot()} class="w-24"><NumberFieldInput min={50} max={2000} onInput={(e) => setNBoot(Math.max(10, +e.currentTarget.value || 10))} /></NumberField>
-              <span>Permutations</span>
-              <NumberField value={nPerm()} class="w-24"><NumberFieldInput min={50} max={2000} onInput={(e) => setNPerm(Math.max(10, +e.currentTarget.value || 10))} /></NumberField>
-              <span>alpha</span>
-              <NumberField value={alpha()} class="w-20"><NumberFieldInput min={0.001} max={0.2} step="0.001" onInput={(e) => setAlpha(Math.min(0.2, Math.max(0.001, +e.currentTarget.value || 0.05)))} /></NumberField>
-              <div class="flex items-center gap-1 w-full sm:w-auto mt-2 sm:mt-0 sm:ml-4">
-                <span>Aggregate</span>
-                <Button size="sm" variant={aggMode()==='mean' ? 'default':'outline'} onClick={()=>setAggMode('mean')}>Mean</Button>
-                <Button size="sm" variant={aggMode()==='median' ? 'default':'outline'} onClick={()=>setAggMode('median')}>Median</Button>
-                <Button size="sm" variant={aggMode()==='weighted' ? 'default':'outline'} onClick={()=>setAggMode('weighted')}>Weighted</Button>
-              </div>
-            </div>
-          </div>
-
-          <Show when={selTests().length === 1}>
-          <div class="rounded border p-3 space-y-3">
-            <div class="text-sm font-medium">Sessions included</div>
-            <For each={selParticipants()}>{p =>
-              <div class="border rounded p-2">
-                <div class="text-xs font-medium mb-1">{p} — used {Object.values(selectedSessions()[p]||{}).filter(Boolean).length}/{(sessionsByPart()[p]||[]).length}</div>
-                <div class="flex flex-wrap gap-2 items-center mb-2">
-                  <Button size="sm" variant="outline" onClick={() => {
-                    const sel = { ...selectedSessions() }; sel[p] = sel[p] || {}; (sessionsByPart()[p]||[]).forEach(s=> sel[p][`${s.timeline}|${s.recording}`]=true); setSelectedSessions(sel);
-                  }}>Select all</Button>
-                  <Button size="sm" variant="outline" onClick={() => {
-                    const sel = { ...selectedSessions() }; sel[p] = sel[p] || {}; (sessionsByPart()[p]||[]).forEach(s=> sel[p][`${s.timeline}|${s.recording}`]=false); setSelectedSessions(sel);
-                  }}>Clear all</Button>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  <For each={sessionsByPart()[p]||[]}>{s => {
-                    const key = `${s.timeline}|${s.recording}`; const checked = !!(selectedSessions()[p]?.[key]);
-                    return (
-                      <label class="text-xs inline-flex items-center gap-1 border rounded px-2 py-1">
-                        <input type="checkbox" checked={checked} onChange={(e) => {
-                          const sel = { ...selectedSessions() }; sel[p] = sel[p] || {}; sel[p][key] = e.currentTarget.checked; setSelectedSessions(sel);
-                        }} /> {s.timeline} · {s.recording}
-                      </label>
-                    );
-                  }}</For>
-                </div>
-              </div>
-            }</For>
-          </div>
-          </Show>
-
-            <div class="flex items-center gap-2 justify-end">
-              <Button onClick={generate} disabled={!canRun() || running()}>{running() ? 'Running…' : 'Generate'}</Button>
+          {/* Red AOIs */}
+          <div class="flex flex-col gap-2">
+            <span class="text-sm font-medium">Red AOIs (Negative)</span>
+            <div class="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto border rounded p-2">
+              <For each={ALL_AOI_KEYS}>
+                {(key) => (
+                  <label class="flex items-center space-x-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={redKeys().includes(key)}
+                      onChange={(e) => {
+                        if (e.currentTarget.checked) {
+                          setRedKeys([...redKeys(), key]);
+                        } else {
+                          setRedKeys(redKeys().filter(k => k !== key));
+                        }
+                      }}
+                    />
+                    <span class="truncate">{AOI_KEY_LABEL[key as keyof typeof AOI_KEY_LABEL]}</span>
+                  </label>
+                )}
+              </For>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <Show when={curve()}>
+      {/* Compare Groups */}
+      <For each={compareGroups()}>
+        {(group) => (
+          <Card>
+            <CardHeader>
+              <CardTitle>{group.name}</CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-4">
+              {/* Group Tests */}
+              <div class="flex flex-col gap-2">
+                <span class="text-sm font-medium">Tests (filtered by global + meta filters)</span>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-40 overflow-y-auto border rounded p-2">
+                  <For each={getFilteredTests(group)}>
+                    {(test) => (
+                      <label class="flex items-center space-x-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={group.tests.includes(test)}
+                          onChange={(e) => {
+                            const next = e.currentTarget.checked
+                              ? [...group.tests, test]
+                              : group.tests.filter((t) => t !== test);
+                            updateGroup(group.id, { tests: next });
+                          }}
+                        />
+                        <span class="truncate">{test}</span>
+                      </label>
+                    )}
+                  </For>
+                </div>
+              </div>
+
+              {/* Group Participants */}
+              <div class="flex flex-col gap-2">
+                <span class="text-sm font-medium">Participants (filtered by global + selected tests)</span>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-40 overflow-y-auto border rounded p-2">
+                  <For each={getFilteredParticipants(group)}>
+                    {(participant) => (
+                      <label class="flex items-center space-x-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={group.participants.includes(participant)}
+                          onChange={(e) => {
+                            const next = e.currentTarget.checked
+                              ? [...group.participants, participant]
+                              : group.participants.filter((p) => p !== participant);
+                            updateGroup(group.id, { participants: next });
+                          }}
+                        />
+                        <span class="truncate">{participant}</span>
+                        <span class="text-xs text-muted-foreground">({isQacMap()[participant] ? 'QAC' : 'Non-QAC'})</span>
+                      </label>
+                    )}
+                  </For>
+                </div>
+              </div>
+
+              {/* Group Recordings */}
+              <div class="flex flex-col gap-2">
+                <span class="text-sm font-medium">Recordings (Participant | Timeline)</span>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-40 overflow-y-auto border rounded p-2">
+                  <For each={getFilteredRecordings(group)}>
+                    {(rec) => (
+                      <label class="flex items-center space-x-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={group.recordings.includes(rec)}
+                          onChange={(e) => {
+                            const next = e.currentTarget.checked
+                              ? [...group.recordings, rec]
+                              : group.recordings.filter((r) => r !== rec);
+                            updateGroup(group.id, { recordings: next });
+                          }}
+                        />
+                        <span class="truncate">{rec}</span>
+                      </label>
+                    )}
+                  </For>
+                </div>
+              </div>
+
+              {/* Meta Filters */}
+              <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div class="flex flex-col gap-1">
+                  <span class="text-xs text-muted-foreground">Truth Value</span>
+                  <Select
+                    value={group.metaFilters.truthValue}
+                    onChange={(truthValue) => updateGroup(group.id, { metaFilters: { ...group.metaFilters, truthValue } })}
+                    options={["all", ...truthValues()]}
+                    itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}
+                  >
+                    <SelectTrigger class="w-full">
+                      <SelectValue>{group.metaFilters.truthValue}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent />
+                  </Select>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <span class="text-xs text-muted-foreground">Morpheme</span>
+                  <Select
+                    value={group.metaFilters.morpheme}
+                    onChange={(morpheme) => updateGroup(group.id, { metaFilters: { ...group.metaFilters, morpheme } })}
+                    options={["all", ...morphemes()]}
+                    itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}
+                  >
+                    <SelectTrigger class="w-full">
+                      <SelectValue>{group.metaFilters.morpheme}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent />
+                  </Select>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <span class="text-xs text-muted-foreground">Position</span>
+                  <Select
+                    value={group.metaFilters.position}
+                    onChange={(position) => updateGroup(group.id, { metaFilters: { ...group.metaFilters, position } })}
+                    options={["all", ...positions()]}
+                    itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}
+                  >
+                    <SelectTrigger class="w-full">
+                      <SelectValue>{group.metaFilters.position}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent />
+                  </Select>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <span class="text-xs text-muted-foreground">Series</span>
+                  <Select
+                    value={group.metaFilters.series}
+                    onChange={(series) => updateGroup(group.id, { metaFilters: { ...group.metaFilters, series } })}
+                    options={["all", ...seriesOptions()]}
+                    itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}
+                  >
+                    <SelectTrigger class="w-full">
+                      <SelectValue>{group.metaFilters.series}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent />
+                  </Select>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <span class="text-xs text-muted-foreground">Group</span>
+                  <Select
+                    value={group.metaFilters.group}
+                    onChange={(group_val) => updateGroup(group.id, { metaFilters: { ...group.metaFilters, group: group_val } })}
+                    options={["all", ...groupOptions()]}
+                    itemComponent={(pp) => <SelectItem item={pp.item}>{pp.item.rawValue}</SelectItem>}
+                  >
+                    <SelectTrigger class="w-full">
+                      <SelectValue>{group.metaFilters.group}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent />
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </For>
+
+      {/* Generate Button */}
+      <div class="flex justify-center">
+        <Button 
+          onClick={generateComparison} 
+          disabled={running() || !globalTests().length || !globalParticipants().length}
+          class="px-8"
+        >
+          {running() ? "Generating..." : "Generate Comparison"}
+        </Button>
+      </div>
+
+      {/* Results */}
+      <Show when={results()}>
         <Card>
-          <CardHeader><CardTitle>Effect Curve</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Comparison Results</CardTitle>
+          </CardHeader>
           <CardContent>
-            <div class="h-[380px]">
-              <LineChart data={viz()} options={{ responsive: true, maintainAspectRatio: false, scales: { x: { type: "linear", min: 0 }, y: { beginAtZero: true } }, plugins: { legend: { position: "top", align: "start", labels: { usePointStyle: true, boxWidth: 8, font: { size: 10 } } } } }} />
-            </div>
-            <div class="grid gap-3 md:grid-cols-2 mt-3">
-              <JsonViewer title="Curve JSON" data={curve()} />
-              <JsonViewer title="Permutation clusters" data={sig()} />
-            </div>
+            <JsonViewer data={results()} />
           </CardContent>
         </Card>
       </Show>

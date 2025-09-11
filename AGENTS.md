@@ -38,6 +38,30 @@
 - Do not commit secrets. The bundled DB is read‑only; replace it at `src-tauri/resources/eye_tracking.db` if needed.
 - Vite port is fixed at 1420 for Tauri; free the port before running.
 
+## Experiment Background
+This eye-tracking application studies how Cantonese-speaking children understand the word "only" (淨係, 得, 咋) in different sentence structures. The experiment compares:
+
+- **Szinghai** (Subject only): "淨係牛仔拎咗枝鉛筆" / "得牛仔拎咗枝鉛筆" (Only cow took a pencil)
+- **Vzinghai** (Verb only): "牛仔淨係拎咗枝鉛筆" / "牛仔拎咗枝鉛筆咋"  (Cow only took a pencil)
+
+Previous research shows Szinghai performs worse than Vzinghai. The experiment uses:
+
+### Test Structure
+- **Test names**: Tx (correct answer expected), Fx (incorrect answer expected), where x = 1,2...
+- **Subjects**: 9 animals (貓仔、豬仔、牛仔、狗仔、馬騮、馬仔、雞仔、兔仔、羊仔)
+- **Objects**: 21 items (水樽、紙巾、火車、香蕉、餅乾、單車、匙羹、鉛筆、口罩、牙膏、蘋果、飛機、較剪、蛋糕、書包、鎖匙、頸巾、雪條、西瓜、枕頭、鑰匙)
+- **Measure words**: 8 types (個、盒、架、隻、塊、枝、把、條)
+- **Verb**: Always "拎咗" (took)
+- **Only words**: 淨係, 得, 咋, or no "only"
+
+### AOI (Areas of Interest) Logic example (not all)
+- **Correct AOI**: Object next to the mentioned object (for subject-only sentences)
+- **Incorrect AOI**: Other animals that took the pencil (indicates misunderstanding)
+- Eye-tracking validates if children's gaze patterns match their verbal answers
+
+### Data Analysis Focus
+The Advanced Compare feature analyzes gaze patterns across different test conditions, participant groups, and AOI definitions to understand comprehension patterns.
+
 ## Agent‑Specific Instructions
 - Respect the feature‑first layout and the `@` alias.
 - Update this file and `README.md` when behavior or commands change.
