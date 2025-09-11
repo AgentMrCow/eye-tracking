@@ -10,6 +10,8 @@ export default function SettingsPage() {
   const [busy, setBusy] = createSignal(false);
   const [apiKey, setApiKey] = createSignal("");
   const [saved, setSaved] = createSignal(false);
+  const envKey = (import.meta as any).env?.VITE_XAI_API_KEY as string | undefined;
+  const usingEnv = !!(envKey && envKey.trim());
 
   async function refresh() {
     const rows = await getDisabledSlicesRaw().catch(() => []);
@@ -34,17 +36,25 @@ export default function SettingsPage() {
         <CardHeader><CardTitle>Settings</CardTitle></CardHeader>
         <CardContent class="space-y-4">
           <div class="rounded border p-3 space-y-2">
-            <div class="font-medium">xAI Grok API</div>
-            <div class="text-xs text-muted-foreground">Stored locally via Tauri Store. Not sent anywhere except your calls.</div>
+            <div class="flex items-center justify-between">
+              <div class="font-medium">xAI Grok API</div>
+              <Show when={usingEnv}>
+                <span class="text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">Using env key</span>
+              </Show>
+            </div>
+            <div class="text-xs text-muted-foreground">Stored locally via Tauri Store (unless an env key is provided). Never sent anywhere except your API calls.</div>
             <div class="flex items-end gap-2">
               <TextField value={apiKey()} onChange={(v) => { setApiKey(v); setSaved(false); }}>
-                <TextFieldInput type="password" placeholder="xai-..." class="w-[420px]" />
+                <TextFieldInput type="password" placeholder={usingEnv ? "Managed by env (VITE_XAI_API_KEY)" : "xai-..."} class="w-[420px]" disabled={usingEnv} />
               </TextField>
-              <Button variant="outline" onClick={async () => { await saveXaiApiKey(apiKey()); setSaved(true); }}>Save</Button>
+              <Button variant="outline" disabled={usingEnv} onClick={async () => { await saveXaiApiKey(apiKey()); setSaved(true); }}>Save</Button>
               <Show when={saved()}>
                 <span class="text-xs text-green-600">Saved</span>
               </Show>
             </div>
+            <Show when={usingEnv}>
+              <div class="text-xs text-muted-foreground">To change the key, edit your .env.local and restart the app.</div>
+            </Show>
           </div>
           <div class="rounded border p-3 flex items-center justify-between">
             <div>

@@ -17,6 +17,7 @@ import { useReplay } from "../hooks/useReplay";
 import type { MetaKey } from "../types";
 import { parseAOISet } from "../utils";
 import { DEFAULT_COLORS } from "../constants";
+import type { BoxTypes } from "../types";
 
 export default function GazeAnalysis() {
   const Q = useGazeQuery();
@@ -154,8 +155,8 @@ export default function GazeAnalysis() {
   // Build a copy of the Timeline dataset for JSON viewing (mirrors TimelineChart)
   const timelineDataset = createMemo(() => {
     const dat = Q.rows().map(r => ({ t: (+new Date(r.timestamp) - Q.baseMs()) / 1000, ...r }));
-    const keys = Object.keys(DEFAULT_COLORS) as (keyof typeof DEFAULT_COLORS)[];
-    const ds = keys.map((b) => {
+    const keys = Object.keys(DEFAULT_COLORS) as BoxTypes[];
+    const ds = keys.map((b: BoxTypes) => {
       const sel = Q.selectedBoxes();
       const hide = sel.size ? !sel.has(b as string) : false;
       return {
