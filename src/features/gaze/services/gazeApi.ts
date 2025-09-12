@@ -13,6 +13,7 @@ import {
   getTimelineRecordingsRaw,
   getGazeDataRaw,
   getBoxStatsRaw,
+  getAllParticipantSessionsRaw,
 } from "@/shared/tauriClient";
 import { getParticipantsForTestRaw, getTestsForParticipantRaw } from "@/shared/tauriClient";
 import { rowMapTo, pick } from "@/shared/services/testData";
@@ -37,6 +38,15 @@ const TLRecSchema: z.ZodType<TLRec> = z.object({
   timeline: z.string(),
   recording: z.string(),
 });
+
+const ParticipantSessionSchema = z.object({
+  participant: z.string(),
+  test_name: z.string(),
+  timeline: z.string(),
+  recording: z.string(),
+});
+
+export type ParticipantSession = z.infer<typeof ParticipantSessionSchema>;
 
 const CatalogRowSchema: z.ZodType<CatalogRow> = z
   .object({
@@ -146,4 +156,11 @@ export async function getParticipantsForTest(testName: string): Promise<string[]
 export async function getTestsForParticipant(participant: string): Promise<string[]> {
   const raw = await getTestsForParticipantRaw({ participant });
   return z.array(z.string()).parse(raw);
+}
+
+export async function getAllParticipantSessions(params: {
+  tests: string[]; participants: string[];
+}): Promise<ParticipantSession[]> {
+  const raw = await getAllParticipantSessionsRaw(params);
+  return z.array(ParticipantSessionSchema).parse(raw);
 }

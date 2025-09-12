@@ -44,6 +44,14 @@ pub struct TimelineRecording {
     recording: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ParticipantSession {
+    participant: String,
+    test_name: String,
+    timeline: String,
+    recording: String,
+}
+
 /* Generic small-table row: return every column as String (or null) */
 pub type RowMap = HashMap<String, Option<String>>;
 
@@ -450,6 +458,82 @@ async fn get_timeline_recordings(
         .map_err(|e| e.to_string())?;
 
     Ok(rows.collect::<SqlResult<Vec<TimelineRecording>>>().map_err(|e| e.to_string())?)
+}
+
+/* Optimized: Get all participant sessions for multiple tests in one call */
+#[tauri::command]
+async fn get_all_participant_sessions(
+    tests: Vec<String>,
+    participants: Vec<String>,
+    pool: State<'_, DbPool>,
+    disabled: State<'_, DisabledStore>,
+) -> Result<Vec<ParticipantSession>, String> {
+    let conn = pool.0.get().map_err(|e| e.to_string())?;
+    
+    if tests.is_empty() || participants.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let mut query = String::from(
+        r#"
+        SELECT DISTINCT "Participant name", "Test Name", "Timeline name", "Recording name"
+        FROM gaze_data
+        WHERE "Test Name" IN (
+        "#,
+    );
+    
+    // Add test placeholders
+    query.push_str(&vec!["?"; tests.len()].join(","));
+    query.push_str(") AND \"Participant name\" IN (");
+    
+    // Add participant placeholders
+    query.push_str(&vec!["?"; participants.len()].join(","));
+    query.push(')');
+
+    // Exclude disabled sessions
+    let disabled_set = disabled.0.read().unwrap();
+    let disabled_filters: Vec<&DisabledSlice> = disabled_set
+        .iter()
+        .filter(|ds| tests.contains(&ds.test_name) && participants.contains(&ds.participant_name))
+        .collect();
+    
+    if !disabled_filters.is_empty() {
+        query.push_str(" AND NOT (");
+        for (i, _) in disabled_filters.iter().enumerate() {
+            if i > 0 { query.push_str(" OR "); }
+            query.push_str("(\"Test Name\" = ? AND \"Recording name\" = ? AND \"Participant name\" = ?)");
+        }
+        query.push(')');
+    }
+    
+    query.push_str(r#" ORDER BY "Participant name", "Test Name", "Timeline name", "Recording name""#);
+
+    let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
+    let mut params: Vec<&dyn rusqlite::ToSql> = vec![];
+    
+    // Add test parameters
+    for t in &tests { params.push(t); }
+    // Add participant parameters
+    for p in &participants { params.push(p); }
+    // Add disabled filter parameters
+    for ds in &disabled_filters {
+        params.push(&ds.test_name);
+        params.push(&ds.recording_name);
+        params.push(&ds.participant_name);
+    }
+
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(params), |row| {
+            Ok(ParticipantSession {
+                participant: row.get(0)?,
+                test_name: row.get(1)?,
+                timeline: row.get(2)?,
+                recording: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows.collect::<SqlResult<Vec<ParticipantSession>>>().map_err(|e| e.to_string())?)
 }
 
 /* 4) Box share stats for filtered slice */
@@ -1012,6 +1096,7 @@ pub fn run() {
             get_static_data,
             // gaze
             get_timeline_recordings,
+            get_all_participant_sessions,
             get_gaze_data,
             get_box_stats,
             get_participants_for_test,

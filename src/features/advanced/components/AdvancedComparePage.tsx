@@ -1,14 +1,15 @@
-import { For, Show, createEffect, createMemo, createSignal, untrack } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider, SliderFill, SliderThumb, SliderTrack } from "@/components/ui/slider";
 import JsonViewer from "@/components/ui/json-viewer";
 
-import { getAllCatalog, getGazeData, getParticipants, getTimelineRecordings } from "@/features/gaze/services/gazeApi";
+import { getAllCatalog, getGazeData, getParticipants, getAllParticipantSessions } from "@/features/gaze/services/gazeApi";
 import { getStatic, getParticipantsTableRaw, searchSlicesRaw } from "@/shared/tauriClient";
 import { boxesFor } from "@/features/catalog/utils";
 import { ALL_AOI_KEYS, AOI_KEY_LABEL } from "@/features/catalog/constants";
+import type { BoxTypes } from "@/features/gaze/types";
 
 // --- Types ---
 interface Session {
@@ -166,21 +167,41 @@ export default function AdvancedComparePage() {
   });
 
   // Sessions: fetch for each selected participant across selected tests
+  const [lastFetchKey, setLastFetchKey] = createSignal<string>("");
+  
   createEffect(async () => {
     const tests = selTests();
     const parts = selParticipants();
-    if (!tests.length || !parts.length) { setSessionsByPart({}); setSelRecordings([]); return; }
+    if (!tests.length || !parts.length) { 
+      setSessionsByPart({}); 
+      setSelRecordings([]);
+      setLastFetchKey("");
+      return; 
+    }
+
+    // Create a stable key to avoid unnecessary re-fetching
+    const key = `${tests.sort().join(',')}|${parts.sort().join(',')}`;
+    if (lastFetchKey() === key) return;
 
     const map: Record<string, Session[]> = {};
-    for (const p of parts) {
-      const list: Session[] = [];
-      for (const t of tests) {
-        const sess = await getTimelineRecordings({ testName: t, participants: [p] }).catch(() => [] as any[]);
-        for (const s of sess) list.push({ testName: t, timeline: s.timeline, recording: s.recording });
+    
+    // Optimized: fetch all participant sessions in a single call
+    const allSessions = await getAllParticipantSessions({ tests, participants: parts }).catch(() => []);
+    
+    // Group sessions by participant
+    for (const session of allSessions) {
+      if (!map[session.participant]) {
+        map[session.participant] = [];
       }
-      map[p] = list;
+      map[session.participant].push({
+        testName: session.test_name,
+        timeline: session.timeline,
+        recording: session.recording,
+      });
     }
+    
     setSessionsByPart(map);
+    setLastFetchKey(key);
   });
 
   // Recording options for globals (show label `participant | timeline`, but value includes recording too)
@@ -298,8 +319,8 @@ export default function AdvancedComparePage() {
 
               let blue = 0, red = 0, valid = 0;
               for (const pt of gaze) {
-                const box = pt.box_name as string;
-                if ((invalid as Set<string>).has(box)) continue;
+                const box = pt.box_name as BoxTypes;
+                if ((invalid as Set<string>).has(pt.box_name)) continue;
                 valid++;
                 if (blueSet.has(box)) blue++;
                 else if (redSet.has(box)) red++;
@@ -411,9 +432,18 @@ export default function AdvancedComparePage() {
             <Select<string> multiple value={selRecordings()} onChange={setSelRecordings} options={recordingOptionsGlobal().map(o => o.value)}
               itemComponent={(pp) => {
                 const value = pp.item.rawValue as string; // p|||timeline|||recording
-                const [p, timeline] = value.split("|||");
-                const label = `${p} | ${timeline}`;
-                return <SelectItem item={pp.item}><span class="truncate">{label}</span></SelectItem>;
+                const [p, timeline, recording] = value.split("|||");
+                return (
+                  <SelectItem item={pp.item}>
+                    <div class="flex w-full items-center justify-between gap-3">
+                      <span class="truncate">{recording}</span>
+                      <div class="flex gap-1">
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">{p}</span>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">{timeline}</span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                );
               }}
             >
               <SelectTrigger class="w-full"><span>{selRecordings().length ? `${selRecordings().length} selected` : 'No recordings selected'}</span></SelectTrigger>
@@ -549,8 +579,18 @@ export default function AdvancedComparePage() {
               <Select<string> multiple value={g.recordings} onChange={(v) => updateGroup(g.id, { recordings: v })} options={recordingOptionsForGroup(g).map(o => o.value)}
                 itemComponent={(pp) => {
                   const value = pp.item.rawValue as string;
-                  const [p, timeline] = value.split("|||");
-                  return (<SelectItem item={pp.item}><span class="truncate">{p} | {timeline}</span></SelectItem>);
+                  const [p, timeline, recording] = value.split("|||");
+                  return (
+                    <SelectItem item={pp.item}>
+                      <div class="flex w-full items-center justify-between gap-3">
+                        <span class="truncate">{recording}</span>
+                        <div class="flex gap-1">
+                          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">{p}</span>
+                          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">{timeline}</span>
+                        </div>
+                      </div>
+                    </SelectItem>
+                  );
                 }}
               >
                 <SelectTrigger class="w-full"><span>{g.recordings.length ? `${g.recordings.length} selected` : 'No recordings'}</span></SelectTrigger>

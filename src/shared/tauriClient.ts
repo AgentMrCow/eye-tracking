@@ -123,4 +123,14 @@ export async function getParticipantsTableRaw(): Promise<RowMap[]> {
   return withLoading(invoke("get_participants"));
 }
 
+export async function getAllParticipantSessionsRaw(params: {
+  tests: string[];
+  participants: string[];
+}): Promise<unknown> {
+  return withLoading(invoke("get_all_participant_sessions", {
+    tests: params.tests,
+    participants: params.participants,
+  }));
+}
+
 // (dedupe guard) — function defined once
